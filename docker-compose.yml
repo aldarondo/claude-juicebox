@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+
+  juicebox-mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: juicebox-mosquitto
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    ports:
+      - "1883:1883"
+      - "9001:9001"   # WebSockets — useful for debugging via MQTT Explorer
+    restart: unless-stopped
+
+  juicepassproxy:
+    image: ghcr.io/juicerescue/juicepassproxy:latest
+    container_name: juicepassproxy
+    # Host network required so it can receive UDP from the JuiceBox at 192.168.0.141
+    # and so it can reach Mosquitto on localhost:1883
+    network_mode: host
+    environment:
+      - JUICEBOX_HOST=${JUICEBOX_HOST}
+      - UPDATE_UDPC=${UPDATE_UDPC:-false}
+      - MQTT_HOST=localhost
+      - MQTT_PORT=1883
+      - MQTT_USER=${MQTT_USER:-}
+      - MQTT_PASS=${MQTT_PASS:-}
+      - ENELX_SERVER_HOST=${ENELX_SERVER_HOST:-juicenet-udp-prod3-usa.enelx.com}
+      - ENELX_SERVER_PORT=${ENELX_SERVER_PORT:-8042}
+    restart: unless-stopped
+    depends_on:
+      - juicebox-mosquitto
+
+  juicebox-mcp:
+    build: ./mcp-server
+    container_name: juicebox-mcp
+    ports:
+      - "${MCP_PORT:-3001}:3001"
+    environment:
+      - MQTT_BROKER=mqtt://juicebox-mosquitto:1883
+      - MQTT_USER=${MQTT_USER:-}
+      - MQTT_PASS=${MQTT_PASS:-}
+      - JUICEBOX_ID=${JUICEBOX_ID:-JuiceBox-0E8}
+      # Override these if JuicePassProxy uses different topic names.
+      # Run: docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v
+      # to see the actual topics being published before changing these.
+      - MQTT_STATE_TOPIC=${MQTT_STATE_TOPIC:-}
+      - MQTT_CMD_TOPIC=${MQTT_CMD_TOPIC:-}
+    restart: unless-stopped
+    depends_on:
+      - juicebox-mosquitto
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:

@@ -37,13 +37,13 @@ JuiceBox Pro 40 (UDP :8042)
              │ subscribed by MCP server
              ▼
   ┌──────────────────────┐
-  │   juicebox-mcp       │  Docker on Synology (port 8080)
+  │   juicebox-mcp       │  Docker on Synology (port 3001, configurable)
   │   (Node.js MCP SSE)  │
   └──────────┬───────────┘
              │ MCP over SSE
              ▼
        Claude / Cowork
-       → Add server: http://192.168.0.64:8080/sse
+       → Add server: http://192.168.0.64:3001/sse
 ```
 
 ---
@@ -82,7 +82,7 @@ Deploys three containers on the Synology NAS:
 |-----------|-------|------|
 | `juicebox-mosquitto` | `eclipse-mosquitto:2` | 1883 |
 | `juicepassproxy` | `ghcr.io/juicerescue/juicepassproxy:latest` | 8042/udp |
-| `juicebox-mcp` | Built from `./mcp-server` | 8080 |
+| `juicebox-mcp` | Built from `./mcp-server` | `MCP_PORT` (default 3001) |
 
 Note: `juicepassproxy` runs in **host network mode** so it can directly reach
 `192.168.0.141`. The other two containers use the default bridge network.
@@ -102,6 +102,9 @@ UPDATE_UDPC=false
 # MQTT (leave blank for no auth — fine for local-only use)
 MQTT_USER=
 MQTT_PASS=
+
+# MCP server port — change this if 3001 is already in use on your NAS
+MCP_PORT=3001
 
 # Enel X relay (JuicePassProxy forwards to this as a fallback — can leave as-is)
 ENELX_SERVER_HOST=juicenet-udp-prod3-usa.enelx.com
@@ -149,7 +152,7 @@ Step-by-step guide:
 5. Watch logs to confirm UDPC update succeeded: `docker logs juicepassproxy`
 6. Set `UPDATE_UDPC=false`, restart juicepassproxy: `docker-compose restart juicepassproxy`
 7. Verify MQTT data: `docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v`
-8. Add MCP server to Claude: `http://192.168.0.64:8080/sse`
+8. Add MCP server to Claude: `http://192.168.0.64:3001/sse` (or your chosen `MCP_PORT`)
 9. Test by asking Claude: *"What is the status of my JuiceBox charger?"*
 
 ---
@@ -166,5 +169,11 @@ Step-by-step guide:
 ## Ready to Build?
 
 If this plan looks good, say the word and I'll create all the files above.
-The only thing to double-check first: make sure **port 8042 UDP** and **port 8080 TCP**
-are not already in use on your Synology NAS.
+The only thing to double-check first: make sure **port 8042 UDP** and **port 3001 TCP**
+(or your chosen `MCP_PORT`) are not already in use on your Synology NAS.
+
+To check via SSH:
+```bash
+sudo netstat -tulnp | grep -E ':8042|:3001'
+```
+No output means both ports are free and you're good to go.

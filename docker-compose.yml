@@ -37,8 +37,9 @@ services:
     build: ./mcp-server
     container_name: juicebox-mcp
     ports:
-      - "${MCP_PORT:-3001}:3001"
+      - "${PORT:-3001}:${PORT:-3001}"
     environment:
+      - PORT=${PORT:-3001}
       - MQTT_BROKER=mqtt://juicebox-mosquitto:1883
       - MQTT_USER=${MQTT_USER:-}
       - MQTT_PASS=${MQTT_PASS:-}

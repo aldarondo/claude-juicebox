@@ -32,3 +32,7 @@ MCP server that restores local control over a JuiceBox Pro 40 EV charger after E
 
 ---
 @~/Documents/GitHub/CLAUDE.md
+
+## Git Rules
+- Never create pull requests. Push directly to main.
+- solo/auto-push OK

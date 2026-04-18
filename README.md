@@ -122,21 +122,27 @@ The JuiceBox uses DHCP (`wlan.dhcp.enabled` reverts to `1` after reboot on EMWER
 
 `juicebox-dns` (dnsmasq) runs in **host network mode** so it can receive DHCP broadcasts. It is configured to:
 
-- **Only respond to the JuiceBox MAC** (`4C:55:CC:14:50:E8`) — all other DHCP requests are silently ignored
-- **Assign** `192.168.0.141` with DNS `192.168.0.64` and gateway `192.168.0.1`
+- **Only respond to the JuiceBox Wi-Fi MAC** (`52:D4:F7:14:50:E8`) — all other DHCP requests are silently ignored
+- **Assign** `192.168.0.2` with DNS `192.168.0.64` and gateway `192.168.0.1`
 - **Ignore** all other MACs (`dhcp-ignore=tag:!known`) — the Cox router continues to handle DHCP for all other devices
 
-To eliminate the race condition between dnsmasq and the Cox router, the Cox DHCP range must be shrunk to **not include** `192.168.0.141`. When the JuiceBox broadcasts a DHCP request:
-- Cox rejects it (`.141` is outside its range)
-- dnsmasq wins by default and assigns the lease with our DNS
+> **MAC note:** The JuiceBox has two MACs. The hardware/ZentriOS MAC (`4C:55:CC:14:50:E8`) appears in `get network.mac` via telnet. The Wi-Fi interface MAC (`52:D4:F7:14:50:E8`) is what the charger actually uses in DHCP frames. `dhcp-host` **must** use the Wi-Fi MAC or dnsmasq will silently ignore all JuiceBox DHCP requests.
 
-#### One-time Cox router change
+To eliminate the race condition between dnsmasq and the Cox router, the Cox DHCP range must be shrunk so that `.2` and the JuiceBox's previously-held IP are both outside it. The charger broadcasts a DHCPREQUEST for its last known IP on reboot:
+- Cox rejects it (outside its range) → Cox sends DHCPNAK
+- dnsmasq rejects it too (wants to assign `.2`) → dnsmasq sends DHCPNAK
+- JuiceBox gets DHCPNAK, falls back to fresh DHCPDISCOVER
+- dnsmasq offers `.2`; Cox offers something from its range; JuiceBox accepts first offer
+- Once JuiceBox holds `.2`, it requests `.2` on every subsequent reboot; Cox always rejects (`.2` outside its range); dnsmasq always wins — stable permanently
+
+#### One-time Cox router changes
 
 Browse to `http://192.168.0.1` → **Gateway → Connection → Local IP Network**.
 
-Change **DHCP Ending Address** from `192.168.0.253` → `192.168.0.140`. Save Settings.
+1. Change **DHCP Starting Address** from `192.168.0.2` → `192.168.0.3` (removes `.2` from Cox's pool permanently)
+2. Change **DHCP Ending Address** to end below any IP the JuiceBox might currently hold — in practice `.196` works well
 
-This is the only router change needed. All other devices (IPs .2–.140) continue to get DHCP from Cox normally. Any devices that currently have IPs in the .141–.253 range will renew to lower IPs when their lease expires (2-day Cox lease time).
+Save Settings. After the JuiceBox is stable at `.2`, the ending address restriction matters less (Cox can't offer `.2` regardless since it starts at `.3`).
 
 ### Why the NAS itself isn't affected
 

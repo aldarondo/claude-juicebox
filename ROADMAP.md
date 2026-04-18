@@ -7,10 +7,7 @@ Deploy Docker Compose stack to Synology NAS and connect to claude-enphase coordi
 [Empty]
 
 ### 🟢 Ready (Next Up)
-
-### 🟢 Ready (Next Up)
-- **Configure Cox router DHCP DNS** — set DNS Server 1 = `192.168.0.64` (NAS), DNS Server 2 = `8.8.8.8` in Cox Panoramic admin → DHCP settings. This routes JuiceBox DNS queries through our dnsmasq without requiring static IP on the charger (static approach tried but wlan.dhcp.enabled reverts to 1 after reboot on EMWERK firmware). After change, verify with: `docker logs juicebox-dns | grep juicebox`
-- **End-to-end test** — plug in car and verify JPP receives directed UDP on port 8042, MQTT topics `hmd/sensor/JuiceBox/*/state` populate
+- **End-to-end charging test** — plug in car and verify JPP receives directed UDP on port 8042, MQTT topics `hmd/sensor/JuiceBox/*/state` populate with live charging data (current, power, energy)
 
 ### 📋 Backlog
 - Add MQTT topic documentation (charger → broker message format)
@@ -20,6 +17,14 @@ Deploy Docker Compose stack to Synology NAS and connect to claude-enphase coordi
 [Empty]
 
 ## ✅ Completed
+- **DHCP intercept working — JuiceBox at .2 with DNS .64 (2026-04-18)**
+  - Root cause of DHCP failure identified: dhcp-host had the ZentriOS hardware MAC (`4c:55:cc:14:50:e8`) instead of the Wi-Fi/DHCP MAC (`52:d4:f7:14:50:e8`) — dnsmasq was silently ignoring all JuiceBox DHCP requests
+  - Cox DHCP ending address changed to .196 to force JuiceBox off its prior Cox-assigned IP (.197) via DHCPNAK, triggering fresh DISCOVER
+  - JuiceBox now boots to `192.168.0.2` with DNS `192.168.0.64` ✓
+  - JPP confirmed receiving live UDP telemetry from charger immediately on next boot ✓
+  - MQTT topics populating: Status=Unplugged, Voltage=243.2V, Temp=109.4°F, Lifetime=9595994 Wh ✓
+  - Stable: `.2` is permanently outside Cox's range (.3+), so dnsmasq wins every future reboot without race condition
+
 - **DNS override infrastructure deployed (2026-04-18)**
   - juicebox-dns (dnsmasq) container added, resolves `device-backend-udp-evos.juice.net` → `192.168.0.64`
   - JuiceBox static DNS config applied via telnet: static IP/gateway/netmask/DNS all saved to flash

@@ -108,19 +108,43 @@ Instead of fighting the UDPC telnet interface, we make the charger's DNS resolut
 1. **`juicebox-dns`** (dnsmasq) runs on the NAS and listens on port 53.
 2. It resolves `device-backend-udp-evos.juice.net` → `192.168.0.64` (NAS IP).
 3. It forwards all other queries to `8.8.8.8` normally.
-4. The JuiceBox is configured with a **static network config** pointing its DNS to `192.168.0.64`.
+4. The JuiceBox must be configured to use `192.168.0.64` as its DNS server (see below).
 
 When the Enel X cloud management channel pushes a new UDPC config (`device-backend-udp-evos.juice.net:8042`), the charger resolves that hostname through our dnsmasq and sends UDP to `192.168.0.64:8042` instead of the real Enel X server.
 
 JPP then receives the packet and forwards it to the real `158.47.3.128:8042`.
 
+### Getting the JuiceBox to use our DNS
+
+The JuiceBox uses DHCP (`wlan.dhcp.enabled` reverts to `1` after reboot on EMWERK firmware — see [troubleshooting](#wlandhcpenabled-reverts-to-1-after-charger-reboot)). The solution is to make dnsmasq also serve as the DHCP server for the JuiceBox, handing it `192.168.0.64` as its DNS server via the DHCP lease itself.
+
+#### How it works
+
+`juicebox-dns` (dnsmasq) runs in **host network mode** so it can receive DHCP broadcasts. It is configured to:
+
+- **Only respond to the JuiceBox MAC** (`4C:55:CC:14:50:E8`) — all other DHCP requests are silently ignored
+- **Assign** `192.168.0.141` with DNS `192.168.0.64` and gateway `192.168.0.1`
+- **Ignore** all other MACs (`dhcp-ignore=tag:!known`) — the Cox router continues to handle DHCP for all other devices
+
+To eliminate the race condition between dnsmasq and the Cox router, the Cox DHCP range must be shrunk to **not include** `192.168.0.141`. When the JuiceBox broadcasts a DHCP request:
+- Cox rejects it (`.141` is outside its range)
+- dnsmasq wins by default and assigns the lease with our DNS
+
+#### One-time Cox router change
+
+Browse to `http://192.168.0.1` → **Gateway → Connection → Local IP Network**.
+
+Change **DHCP Ending Address** from `192.168.0.253` → `192.168.0.140`. Save Settings.
+
+This is the only router change needed. All other devices (IPs .2–.140) continue to get DHCP from Cox normally. Any devices that currently have IPs in the .141–.253 range will renew to lower IPs when their lease expires (2-day Cox lease time).
+
 ### Why the NAS itself isn't affected
 
-The NAS (Synology DSM) and all Docker containers use their own DNS (configured via DSM network settings, typically the Cox gateway). Only devices explicitly configured to use `192.168.0.64` as their DNS server (just the JuiceBox) are affected. JPP's own DNS lookups for the Enel X IP go through the NAS's upstream DNS and return the real IP.
+The NAS (Synology DSM) and all Docker containers use their own DNS (configured via DSM network settings, typically the Cox gateway). Only the JuiceBox — the sole device dnsmasq serves DHCP to — is affected. JPP's own DNS lookups for the Enel X IP go through the NAS's upstream DNS and return the real IP.
 
 ### Cox router note
 
-Consumer Cox WiFi gateways don't support custom DNS host overrides (you can change the upstream DNS server, but not add per-hostname overrides). This DNS approach bypasses that limitation entirely — no router changes needed.
+Cox Panoramic's Local IP Configuration page does not expose a DNS server field in DHCP settings — it always hands out the router itself (`192.168.0.1`) as DNS. The dnsmasq DHCP approach sidesteps this entirely by having dnsmasq serve the JuiceBox directly.
 
 ---
 
@@ -130,7 +154,7 @@ Consumer Cox WiFi gateways don't support custom DNS host overrides (you can chan
 
 - Synology NAS at `192.168.0.64` with Docker / Container Manager
 - JuiceBox at `192.168.0.141` on the same LAN
-- Port `53`, `1883`, `3001`, `8042` free on the NAS
+- Port `53` (DNS), `67` (DHCP), `1883` (MQTT), `3001` (MCP), `8042` (JPP) free on the NAS
 - SSH access + a GitHub deploy key (see `claude-synology` skill for setup)
 
 ### Deploy to NAS
@@ -150,7 +174,9 @@ python skills/synology.py deploy /volume1/docker/claude-juicebox --update
 
 ### Configure the JuiceBox for static DNS
 
-This is a one-time step. The charger's WiFi config is set to static networking so it uses the NAS as its DNS server instead of getting Cox's DNS servers from DHCP.
+> **Note:** On this EMWERK firmware, `wlan.dhcp.enabled 0` reverts to `1` after reboot, likely due to the Enel X cloud management channel resetting it. The static settings (`wlan.static.dns`, IP, gateway, netmask) **do** persist. Consider using Option A (Cox DHCP) instead — see [Getting the JuiceBox to use our DNS](#getting-the-juicebox-to-use-our-dns).
+
+The charger's WiFi config can be set to static networking so it uses the NAS as its DNS server. Even if DHCP re-enables on reboot, the `wlan.static.*` values remain saved for reference or retry.
 
 Connect via the charger's telnet interface (port 2000) and run:
 
@@ -293,6 +319,14 @@ docker exec -it juicebox-mosquitto mosquitto_sub -t 'hmd/#' -v
 Expected behavior. The MITM times out after 120 seconds of no packets (one error), reconnects, and eventually JPP's internal loop counter hits its limit and the process exits. Docker restarts it immediately. No action needed — it's up within seconds.
 
 When actively charging, no restarts occur.
+
+### wlan.dhcp.enabled reverts to 1 after charger reboot
+
+Observed on EMWERK-JB_1_1-1.4.0.28 firmware. Setting `wlan.dhcp.enabled 0` and `save` accepts the command, but after a reboot `get wlan` shows `wlan.dhcp.enabled: 1` again. The static IP/DNS/gateway/netmask settings **do** persist; only the DHCP-enabled flag reverts.
+
+Root cause is likely the Enel X cloud management channel pushing the network config back on connect. The charger cannot be run without cloud access, so fighting this isn't practical.
+
+**Workaround:** Use Option A — configure the Cox router to hand out `192.168.0.64` as the DHCP DNS server. The charger gets our dnsmasq via DHCP, no static config needed. See [Getting the JuiceBox to use our DNS](#getting-the-juicebox-to-use-our-dns).
 
 ### DNS not working after charger reboot
 

@@ -8,16 +8,25 @@ Deploy Docker Compose stack to Synology NAS and connect to claude-enphase coordi
 
 ### 🟢 Ready (Next Up)
 
+### 🟢 Ready (Next Up)
+- **Configure Cox router DHCP DNS** — set DNS Server 1 = `192.168.0.64` (NAS), DNS Server 2 = `8.8.8.8` in Cox Panoramic admin → DHCP settings. This routes JuiceBox DNS queries through our dnsmasq without requiring static IP on the charger (static approach tried but wlan.dhcp.enabled reverts to 1 after reboot on EMWERK firmware). After change, verify with: `docker logs juicebox-dns | grep juicebox`
+- **End-to-end test** — plug in car and verify JPP receives directed UDP on port 8042, MQTT topics `hmd/sensor/JuiceBox/*/state` populate
+
 ### 📋 Backlog
 - Add MQTT topic documentation (charger → broker message format)
-- Test full stack end-to-end with real JuiceBox hardware after NAS deploy (requires car plugged in — charger only sends directed UDP when actively charging/connected)
-- Configure router DNS to point `device-backend-udp-evos.juice.net` → NAS IP for permanent UDPC redirect (avoids needing UPDATE_UDPC=true and the crash loop it causes)
 - Long-term: build custom JPP image with larger MITM_RECV_TIMEOUT (120s → 600s) to reduce idle-state container restarts (currently restarts every ~3.3 hrs when idle, which is acceptable)
 
 ### 🔴 Blocked
 [Empty]
 
 ## ✅ Completed
+- **DNS override infrastructure deployed (2026-04-18)**
+  - juicebox-dns (dnsmasq) container added, resolves `device-backend-udp-evos.juice.net` → `192.168.0.64`
+  - JuiceBox static DNS config applied via telnet: static IP/gateway/netmask/DNS all saved to flash
+  - Discovered: `wlan.dhcp.enabled 0` reverts to 1 after reboot on EMWERK firmware (likely Enel X cloud pushes it back)
+  - Workaround: configure Cox router DHCP to hand out `192.168.0.64` as DNS server (see ROADMAP Ready)
+  - Port correction: LOCAL_PORT and ENELX_SERVER_PORT fixed to 8042 (was 8047)
+  - README rewritten with full protocol deep-dive, DNS approach rationale, troubleshooting guide
 - **juicepassproxy idle-state behavior documented (2026-04-18)**
   - Confirmed charger (EMWERK-JB_1_1-1.4.0.28 firmware) only sends directed UDP when actively charging — broadcasts 192.168.0.141:55555 discovery packets when idle
   - UDPC set to 192.168.0.64:8047 via telnet; Enel X cloud pushes its own stream back (charger sends to both when charging)

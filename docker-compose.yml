@@ -7,9 +7,11 @@ services:
     container_name: juicebox-dns
     cap_add:
       - NET_ADMIN
-    ports:
-      - "53:53/udp"
-      - "53:53/tcp"
+    # Host network mode required for two reasons:
+    #   1. DNS: JuiceBox sends queries to 192.168.0.64:53 — host mode binds port 53 directly
+    #   2. DHCP: JuiceBox broadcasts DHCP to 255.255.255.255:67 — only reachable in host mode
+    #      (Docker port-mapping does not forward broadcast packets)
+    network_mode: host
     volumes:
       - ./dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:ro
     restart: unless-stopped

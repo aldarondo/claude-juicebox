@@ -91,19 +91,56 @@ The `PORT` variable in your `.env` controls which host port the MCP server binds
 
 ## Connecting Claude Desktop
 
-Add to your Claude Desktop MCP config (`claude_desktop_config.json`):
+### 1. Find your config file
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+Create the file if it doesn't exist.
+
+### 2. Add the MCP server entry
 
 ```json
 {
   "mcpServers": {
     "juicebox": {
-      "url": "http://<your-host-ip>:3001/sse"
+      "url": "http://192.168.0.64:3001/sse"
     }
   }
 }
 ```
 
-Replace `<your-host-ip>` with the IP of the machine running Docker (e.g. `192.168.0.64`), and `3001` with your `PORT` value if you changed it.
+Replace `192.168.0.64` with your NAS/Docker host IP, and `3001` with your `PORT` value if you changed it. If you already have other MCP servers configured, add the `"juicebox"` key inside the existing `"mcpServers"` object.
+
+### 3. Restart Claude Desktop
+
+Fully quit and relaunch Claude Desktop. On the next launch it will connect to the SSE endpoint and register the JuiceBox tools.
+
+### 4. Verify the connection
+
+Ask Claude Desktop: **"What is my JuiceBox charger status?"**
+
+Claude should call `get_charger_status` and return live data. If the tool list doesn't appear, check:
+
+- The Docker stack is running: `docker compose ps` (from repo root)
+- The SSE endpoint responds: `curl http://192.168.0.64:3001/health`
+- No firewall is blocking port 3001 between your Mac/PC and the NAS
+
+### Example prompts
+
+Once connected, you can use natural language to control the charger from any Claude Desktop conversation:
+
+```
+Is my car charging?
+Stop charging — we're at peak rate.
+Start charging at 16 amps.
+Set charging to run weeknights from 10pm to 6am at 32A.
+What was the energy delivered in today's session?
+Show me the current charging schedule.
+Run diagnostics on the JuiceBox.
+```
 
 ---
 

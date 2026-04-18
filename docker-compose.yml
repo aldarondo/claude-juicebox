@@ -20,15 +20,19 @@ services:
     # Host network required so it can receive UDP from the JuiceBox at 192.168.0.141
     # and so it can reach Mosquitto on localhost:1883
     network_mode: host
+    volumes:
+      - juicepassproxy-config:/config   # persist auto-generated juicepassproxy.yaml
     environment:
       - JUICEBOX_HOST=${JUICEBOX_HOST}
+      - LOCAL_IP=${LOCAL_IP:-192.168.0.64}   # NAS LAN IP — prevents VPN/tun0 from being picked up
+      - LOCAL_PORT=${LOCAL_PORT:-8047}       # must match the port UDPC was set to on the charger
       - UPDATE_UDPC=${UPDATE_UDPC:-false}
       - MQTT_HOST=localhost
       - MQTT_PORT=1883
       - MQTT_USER=${MQTT_USER:-}
       - MQTT_PASS=${MQTT_PASS:-}
       - ENELX_SERVER_HOST=${ENELX_SERVER_HOST:-juicenet-udp-prod3-usa.enelx.com}
-      - ENELX_SERVER_PORT=${ENELX_SERVER_PORT:-8042}
+      - ENELX_SERVER_PORT=${ENELX_SERVER_PORT:-8047}   # actual Enel X port; local MITM binds to the same port
     restart: unless-stopped
     depends_on:
       - juicebox-mosquitto
@@ -56,3 +60,4 @@ services:
 volumes:
   mosquitto-data:
   mosquitto-log:
+  juicepassproxy-config:

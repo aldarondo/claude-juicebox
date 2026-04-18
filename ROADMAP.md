@@ -7,17 +7,31 @@ Deploy Docker Compose stack to Synology NAS and connect to claude-enphase coordi
 [Empty]
 
 ### 🟢 Ready (Next Up)
-- Deploy Docker Compose stack to Synology NAS — blocked on claude-synology SSH layer first
-- Wire claude-juicebox into enphase-juicebox-coordinator for solar-aware charging
 
 ### 📋 Backlog
 - Add MQTT topic documentation (charger → broker message format)
-- Test full stack end-to-end with real JuiceBox hardware after NAS deploy
+- Test full stack end-to-end with real JuiceBox hardware after NAS deploy (requires car plugged in — charger only sends directed UDP when actively charging/connected)
+- Configure router DNS to point `device-backend-udp-evos.juice.net` → NAS IP for permanent UDPC redirect (avoids needing UPDATE_UDPC=true and the crash loop it causes)
+- Long-term: build custom JPP image with larger MITM_RECV_TIMEOUT (120s → 600s) to reduce idle-state container restarts (currently restarts every ~3.3 hrs when idle, which is acceptable)
 
 ### 🔴 Blocked
-- NAS deployment — blocked on `claude-synology` SSH layer (`lib/ssh.py` + `/synology-deploy`), which requires Charles to enable SSH on the NAS first
+[Empty]
 
 ## ✅ Completed
+- **juicepassproxy idle-state behavior documented (2026-04-18)**
+  - Confirmed charger (EMWERK-JB_1_1-1.4.0.28 firmware) only sends directed UDP when actively charging — broadcasts 192.168.0.141:55555 discovery packets when idle
+  - UDPC set to 192.168.0.64:8047 via telnet; Enel X cloud pushes its own stream back (charger sends to both when charging)
+  - MITM timeout (120s) causes container restart every ~3.3 hours when idle — expected behavior, not a bug; restarts immediately via Docker policy
+  - Root cause of prior crashes confirmed: UPDATE_UDPC=true causes telnet timeout loop (readuntil mismatch) → 10 errors/60 min → crash; left as UPDATE_UDPC=false
+  - DNS approach at router is the recommended long-term fix for persistent UDPC without UPDATE_UDPC
+- **Full NAS deployment (2026-04-18)**
+  - Deployed Mosquitto + JuicePassProxy + juicebox-mcp to `/volume1/docker/claude-juicebox`
+  - Fixed LOCAL_IP auto-detection (VPN tun0 interference) via `LOCAL_IP=192.168.0.64` env var
+  - Added `juicepassproxy-config` volume for persistence
+  - UDPC redirect successful — JuiceBox now sends UDP to `192.168.0.64:8047`
+  - Live charger data confirmed streaming via MQTT (Status: Charging, 124W, 247V)
+  - Rewrote `juiceboxClient.js` for JuicePassProxy v0.5.x `hmd/` topic structure
+  - Connected to Claude Desktop at `http://192.168.0.64:3001/sse`
 - Docker Compose architecture designed (Mosquitto + JuicePassProxy + MCP server)
 - PLAN.md with full implementation detail
 - MCP server scaffold and folder structure

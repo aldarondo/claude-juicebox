@@ -2,6 +2,18 @@ version: "3.8"
 
 services:
 
+  juicebox-dns:
+    image: andyshinn/dnsmasq:latest
+    container_name: juicebox-dns
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:ro
+    restart: unless-stopped
+
   juicebox-mosquitto:
     image: eclipse-mosquitto:2
     container_name: juicebox-mosquitto
@@ -25,14 +37,14 @@ services:
     environment:
       - JUICEBOX_HOST=${JUICEBOX_HOST}
       - LOCAL_IP=${LOCAL_IP:-192.168.0.64}   # NAS LAN IP — prevents VPN/tun0 from being picked up
-      - LOCAL_PORT=${LOCAL_PORT:-8047}       # must match the port UDPC was set to on the charger
+      - LOCAL_PORT=${LOCAL_PORT:-8042}       # Enel X UDP port; MITM binds here so DNS override routes charger traffic to us
       - UPDATE_UDPC=${UPDATE_UDPC:-false}
       - MQTT_HOST=localhost
       - MQTT_PORT=1883
       - MQTT_USER=${MQTT_USER:-}
       - MQTT_PASS=${MQTT_PASS:-}
-      - ENELX_SERVER_HOST=${ENELX_SERVER_HOST:-juicenet-udp-prod3-usa.enelx.com}
-      - ENELX_SERVER_PORT=${ENELX_SERVER_PORT:-8047}   # actual Enel X port; local MITM binds to the same port
+      - ENELX_SERVER_HOST=${ENELX_SERVER_HOST:-device-backend-udp-evos.juice.net}  # actual Enel X UDP hostname for this charger
+      - ENELX_SERVER_PORT=${ENELX_SERVER_PORT:-8042}   # actual Enel X UDP port
     restart: unless-stopped
     depends_on:
       - juicebox-mosquitto

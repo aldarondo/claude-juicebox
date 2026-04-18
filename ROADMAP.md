@@ -18,12 +18,13 @@ Deploy Docker Compose stack to Synology NAS and connect to claude-enphase coordi
 
 ## ✅ Completed
 - **DHCP intercept working — JuiceBox at .2 with DNS .64 (2026-04-18)**
-  - Root cause of DHCP failure identified: dhcp-host had the ZentriOS hardware MAC (`4c:55:cc:14:50:e8`) instead of the Wi-Fi/DHCP MAC (`52:d4:f7:14:50:e8`) — dnsmasq was silently ignoring all JuiceBox DHCP requests
-  - Cox DHCP ending address changed to .196 to force JuiceBox off its prior Cox-assigned IP (.197) via DHCPNAK, triggering fresh DISCOVER
+  - Root cause of DHCP failure identified: dhcp-host had the ZentriOS hardware MAC (`4c:55:cc:14:50:e8`) instead of the Wi-Fi/DHCP MAC (`52:d4:f7:14:50:e8`) — dnsmasq was silently ignoring all JuiceBox DHCP requests due to mismatch
+  - Cox DHCP starting address changed from .2 → .3 (permanently removes .2 from Cox's pool)
+  - Cox DHCP ending address temporarily set to .196 to force JuiceBox off its Cox-held .197 lease via DHCPNAK, triggering fresh DISCOVER that dnsmasq won; ending address later restored to .253
   - JuiceBox now boots to `192.168.0.2` with DNS `192.168.0.64` ✓
   - JPP confirmed receiving live UDP telemetry from charger immediately on next boot ✓
   - MQTT topics populating: Status=Unplugged, Voltage=243.2V, Temp=109.4°F, Lifetime=9595994 Wh ✓
-  - Stable: `.2` is permanently outside Cox's range (.3+), so dnsmasq wins every future reboot without race condition
+  - Stable permanently: JuiceBox requests .2 on every reboot; Cox starts at .3 so Cox always rejects .2; dnsmasq always wins — no race condition
 
 - **DNS override infrastructure deployed (2026-04-18)**
   - juicebox-dns (dnsmasq) container added, resolves `device-backend-udp-evos.juice.net` → `192.168.0.64`

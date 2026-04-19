@@ -1,13 +1,14 @@
 # claude-juicebox — Roadmap
 
 ## Current Milestone
-Deploy Docker Compose stack to Synology NAS and connect to claude-enphase coordinator
+End-to-end charging test + enphase-juicebox-coordinator integration
 
 ### 🔨 In Progress
 [Empty]
 
 ### 🟢 Ready (Next Up)
 - **End-to-end charging test** — plug in car and verify JPP receives directed UDP on port 8042, MQTT topics `hmd/sensor/JuiceBox/*/state` populate with live charging data (current, power, energy)
+- **Wire into enphase-juicebox-coordinator** — connect set_charging_schedule to solar/TOU coordinator so Enphase data drives charging windows automatically
 
 ### 📋 Backlog
 - Add MQTT topic documentation (charger → broker message format)
@@ -46,7 +47,7 @@ Deploy Docker Compose stack to Synology NAS and connect to claude-enphase coordi
   - UDPC redirect successful — JuiceBox now sends UDP to `192.168.0.64:8047`
   - Live charger data confirmed streaming via MQTT (Status: Charging, 124W, 247V)
   - Rewrote `juiceboxClient.js` for JuicePassProxy v0.5.x `hmd/` topic structure
-  - Connected to Claude Desktop at `http://192.168.0.64:3001/sse`
+  - Connected to Claude Desktop at `http://192.168.0.64:3001/sse`; config confirmed in `claude_desktop_config.json` (2026-04-18)
 - Docker Compose architecture designed (Mosquitto + JuicePassProxy + MCP server)
 - PLAN.md with full implementation detail
 - MCP server scaffold and folder structure

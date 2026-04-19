@@ -66,12 +66,12 @@ server.tool(
       }) }] };
     }
     return { content: [{ type: "text", text: JSON.stringify({
-      state:         s.state,
-      power_w:       s.power_w,
-      current_a:     s.current_a,
-      voltage_v:     s.voltage_v,
-      temperature_c: s.temperature_c,
-      signal_dbm:    s.signal_dbm,
+      state:          s.status,
+      power_w:        s.power_w,
+      current_a:      s.current_a,
+      voltage_v:      s.voltage_v,
+      temperature_f:  s.temperature_f,
+      signal_dbm:     s.signal_dbm,
       mqtt_connected: juicebox.isConnected(),
     }, null, 2) }] };
   }

@@ -37,17 +37,45 @@ cp .env.example .env
 |---|---|---|
 | `PORT` | `3001` | HTTP port the MCP server listens on |
 | `MQTT_BROKER` | `mqtt://localhost:1883` | MQTT broker URL |
-| `JUICEBOX_ID` | `JuiceBox-0E8` | Device ID used to build default topic names |
-| `MQTT_STATE_TOPIC` | `juicebox/<JUICEBOX_ID>/state` | Override if JuicePassProxy uses a different topic |
-| `MQTT_CMD_TOPIC` | `juicebox/<JUICEBOX_ID>/cmd` | Override if JuicePassProxy uses a different topic |
 | `MQTT_USER` | _(none)_ | MQTT username (if broker requires auth) |
 | `MQTT_PASS` | _(none)_ | MQTT password (if broker requires auth) |
 
-To discover the actual topic names your JuicePassProxy version publishes:
+To watch all MQTT topics published by JuicePassProxy:
 
 ```bash
-docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v
+docker exec -it juicebox-mosquitto mosquitto_sub -t 'hmd/#' -v
 ```
+
+---
+
+## MQTT topic reference (JuicePassProxy v0.5.x)
+
+JuicePassProxy v0.5+ publishes each charger field as a separate retained topic under the `hmd/` prefix. The MCP server subscribes to `hmd/#` and aggregates them into a single state object.
+
+### State topics (read)
+
+| Topic | Value | Notes |
+|---|---|---|
+| `hmd/sensor/JuiceBox/Status/state` | `Charging` \| `Standby` \| `Plugged In` \| ... | Charger state |
+| `hmd/sensor/JuiceBox/Current/state` | float string | Amps |
+| `hmd/sensor/JuiceBox/Voltage/state` | float string | Volts |
+| `hmd/sensor/JuiceBox/Power/state` | int string | Watts |
+| `hmd/sensor/JuiceBox/Temperature/state` | float string | °F |
+| `hmd/sensor/JuiceBox/Energy--Session-/state` | int string | Wh this session |
+| `hmd/sensor/JuiceBox/Energy--Lifetime-/state` | int string | Wh lifetime |
+| `hmd/sensor/JuiceBox/Frequency/state` | float string | Hz |
+| `hmd/sensor/JuiceBox/Power-Factor/state` | float string | — |
+| `hmd/sensor/JuiceBox/Current-Rating/state` | int string | Max hardware amps |
+| `hmd/number/JuiceBox/Max-Current-Online-Wanted-/state` | float string | Current amps setpoint |
+
+### Command topics (write)
+
+| Topic | Payload | Effect |
+|---|---|---|
+| `hmd/number/JuiceBox/Max-Current-Online-Wanted-/command` | `6`–`40` | Set charging current (amps) |
+| `hmd/number/JuiceBox/Max-Current-Online-Wanted-/command` | `0` | Stop charging |
+
+> **Note:** JuicePassProxy v0.5.x has no explicit start/stop command. Charging is controlled entirely by setting the current limit. Setting to `0` halts the session; restoring to a non-zero value resumes it.
 
 ---
 
@@ -148,7 +176,7 @@ Run diagnostics on the JuiceBox.
 
 | Tool | Description |
 |---|---|
-| `get_charger_status` | Returns current state (charging/available/plugged/error), power (W), current (A), voltage (V), temperature (°C), and MQTT connection status |
+| `get_charger_status` | Returns current state (charging/available/plugged/error), power (W), current (A), voltage (V), temperature (°F), and MQTT connection status |
 | `get_session_info` | Returns energy delivered (kWh), elapsed time (minutes), and session start time for the active charging session |
 | `start_charging` | Enables charging immediately; optionally sets max current (6–40 A, default 32 A) |
 | `stop_charging` | Stops / pauses charging immediately |
@@ -189,7 +217,15 @@ Times are in 24-hour format, `America/Phoenix` timezone. Calling `set_charging_s
 ## Architecture note
 
 ```
-JuiceBox Pro 40  <--UDP-->  JuicePassProxy  <--MQTT-->  Mosquitto  <--MQTT-->  This server  <--SSE-->  Claude
+JuiceBox Pro 40  <--UDP-->  JuicePassProxy  <--MQTT-->  Mosquitto  <--MQTT-->  This server  <--SSE-->  Claude Desktop
+                                                                                     ^
+                                                                                     |  SSE (set_charging_schedule)
+                                                                              enphase-juicebox-coordinator
+                                                                                     |
+                                                                              Enphase Enlighten API
+                                                                              (TOU tariff, solar SOC)
 ```
 
-All three backend services (Mosquitto, JuicePassProxy, this server) are defined in the root `docker-compose.yml`. This `mcp-server/` directory is only the MCP layer.
+All three backend services (Mosquitto, JuicePassProxy, this MCP server) are defined in the root `docker-compose.yml` and run on the Synology NAS. This `mcp-server/` directory is only the MCP layer.
+
+The **enphase-juicebox-coordinator** is a separate service that fetches TOU rates and battery state from the Enphase Enlighten API, computes optimal charging windows via `optimizer.py`, and pushes the result to this server via `set_charging_schedule` over the same SSE MCP interface that Claude Desktop uses.

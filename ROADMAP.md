@@ -21,7 +21,7 @@
 - **Enphase-juicebox-coordinator wired (2026-04-18)** — coordinator calls `set_charging_schedule` via MCP SSE client; full loop: Enphase TOU tariff → optimizer → JuiceBox schedule
 - **Custom JPP image with configurable MITM_RECV_TIMEOUT (2026-04-19)** — `juicepassproxy/Dockerfile` patches upstream image to read timeout from env var; `docker-compose.yml` sets `MITM_RECV_TIMEOUT=600` (reduces idle restarts from every ~3.3 hrs to ~10 min)
 - **All services migrated to GHCR pre-built images (2026-04-19)** — both `juicepassproxy` and `juicebox-mcp` pull from `ghcr.io/aldarondo/...`; GitHub Actions workflows build and push on every relevant change; NAS never needs to build locally
-- **Weekly automation pipeline (2026-04-19)** — GitHub Actions rebuilds both images on Sundays (2am + 3am UTC); scheduled task pulls and restarts containers on NAS at 4am local; fully hands-off image maintenance
+- **Fully automated deploy pipeline (2026-04-19)** — GitHub Actions builds image and SSHes into NAS to run `docker compose pull && up -d` in one workflow; weekly Sunday cron (2am + 3am UTC) keeps both images current with no manual steps; `NAS_SSH_PASSWORD` GitHub secret required
 - **MCP server refactored for SDK 1.9+ (2026-04-19)** — `McpServer` instantiated per connection via factory; fixed `get_session_info` bug (`s.state` → `s.status`, `"charging"` → `"Charging"` to match JPP topic value)
 - **DHCP intercept working — JuiceBox at .2 with DNS .64 (2026-04-18)**
   - Root cause of DHCP failure identified: dhcp-host had the ZentriOS hardware MAC (`4c:55:cc:14:50:e8`) instead of the Wi-Fi/DHCP MAC (`52:d4:f7:14:50:e8`) — dnsmasq was silently ignoring all JuiceBox DHCP requests due to mismatch

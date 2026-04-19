@@ -130,11 +130,11 @@ docker compose pull
 docker compose up -d
 ```
 
-GitHub Actions rebuilds both images automatically:
-- `juicebox-mcp` — on any push to `mcp-server/`, and weekly Sundays at 3:00am UTC (Node base image patches)
-- `juicepassproxy` — on any push to `juicepassproxy/Dockerfile`, and weekly Sundays at 2:00am UTC (upstream JPP releases)
+GitHub Actions builds and deploys automatically — no manual pull needed:
+- `juicepassproxy` — on push to `juicepassproxy/Dockerfile`, and weekly Sundays at 2:00am UTC; SSHes into NAS to pull and restart after build
+- `juicebox-mcp` — on push to `mcp-server/`, and weekly Sundays at 3:00am UTC; SSHes into NAS to pull and restart after build
 
-A scheduled task on the NAS pulls the latest images and restarts updated containers every Sunday at 4:00am local time — no manual intervention needed.
+**Required GitHub secret:** `NAS_SSH_PASSWORD` — add at `github.com/aldarondo/claude-juicebox/settings/secrets/actions`.
 
 ### GHCR authentication (private repo)
 

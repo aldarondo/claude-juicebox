@@ -1,0 +1,38 @@
+name: Build JuicePassProxy custom image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - juicepassproxy/Dockerfile
+  schedule:
+    # Rebuild weekly (Sunday 02:00 UTC) to pick up upstream JPP releases
+    - cron: "0 2 * * 0"
+  workflow_dispatch:   # allow manual trigger from GitHub Actions UI
+
+permissions:
+  contents: read
+  packages: write   # required for GITHUB_TOKEN to push to GHCR
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./juicepassproxy
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/claude-juicebox-juicepassproxy:latest
+            ghcr.io/${{ github.repository_owner }}/claude-juicebox-juicepassproxy:${{ github.sha }}

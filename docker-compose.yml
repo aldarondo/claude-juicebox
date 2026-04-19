@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
   juicepassproxy:
-    build: ./juicepassproxy   # custom image — patches MITM_RECV_TIMEOUT to be env-configurable
+    image: ghcr.io/aldarondo/claude-juicebox-juicepassproxy:latest   # built by .github/workflows/build-juicepassproxy.yml
     container_name: juicepassproxy
     # Host network required so it can receive UDP from the JuiceBox at 192.168.0.141
     # and so it can reach Mosquitto on localhost:1883

@@ -259,7 +259,7 @@ app.post("/messages", express.json(), async (req, res) => {
     res.status(404).json({ error: "Session not found" });
     return;
   }
-  await transport.handlePostMessage(req, res);
+  await transport.handlePostMessage(req, res, req.body);
 });
 
 app.get("/health", (_req, res) => {

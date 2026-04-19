@@ -131,8 +131,10 @@ docker compose up -d
 ```
 
 GitHub Actions rebuilds both images automatically:
-- `juicebox-mcp` — on any push to `mcp-server/`
-- `juicepassproxy` — on any push to `juicepassproxy/Dockerfile`, and weekly on Sundays to pick up upstream JPP releases
+- `juicebox-mcp` — on any push to `mcp-server/`, and weekly Sundays at 3:00am UTC (Node base image patches)
+- `juicepassproxy` — on any push to `juicepassproxy/Dockerfile`, and weekly Sundays at 2:00am UTC (upstream JPP releases)
+
+A scheduled task on the NAS pulls the latest images and restarts updated containers every Sunday at 4:00am local time — no manual intervention needed.
 
 ### GHCR authentication (private repo)
 

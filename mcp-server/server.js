@@ -97,7 +97,7 @@ function createMcpServer() {
         ? +( s.session_energy_wh / 1000).toFixed(3)
         : null;
       return { content: [{ type: "text", text: JSON.stringify({
-        charging:           s.state === "charging",
+        charging:           s.status === "Charging",
         session_energy_kwh: energyKwh,
         session_start:      start?.toISOString() ?? null,
         elapsed_minutes:    elapsedMin,

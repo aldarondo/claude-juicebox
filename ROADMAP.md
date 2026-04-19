@@ -27,32 +27,32 @@
   - Root cause of DHCP failure identified: dhcp-host had the ZentriOS hardware MAC (`4c:55:cc:14:50:e8`) instead of the Wi-Fi/DHCP MAC (`52:d4:f7:14:50:e8`) — dnsmasq was silently ignoring all JuiceBox DHCP requests due to mismatch
   - Cox DHCP starting address changed from .2 → .3 (permanently removes .2 from Cox's pool)
   - Cox DHCP ending address temporarily set to .196 to force JuiceBox off its Cox-held .197 lease via DHCPNAK, triggering fresh DISCOVER that dnsmasq won; ending address later restored to .253
-  - JuiceBox now boots to `192.168.0.2` with DNS `192.168.0.64` ✓
+  - JuiceBox now boots to `<YOUR-JUICEBOX-IP>` with DNS `<YOUR-NAS-IP>` ✓
   - JPP confirmed receiving live UDP telemetry from charger immediately on next boot ✓
   - MQTT topics populating: Status=Unplugged, Voltage=243.2V, Temp=109.4°F, Lifetime=9595994 Wh ✓
   - Stable permanently: JuiceBox requests .2 on every reboot; Cox starts at .3 so Cox always rejects .2; dnsmasq always wins — no race condition
 
 - **DNS override infrastructure deployed (2026-04-18)**
-  - juicebox-dns (dnsmasq) container added, resolves `device-backend-udp-evos.juice.net` → `192.168.0.64`
+  - juicebox-dns (dnsmasq) container added, resolves `device-backend-udp-evos.juice.net` → `<YOUR-NAS-IP>`
   - JuiceBox static DNS config applied via telnet: static IP/gateway/netmask/DNS all saved to flash
   - Discovered: `wlan.dhcp.enabled 0` reverts to 1 after reboot on EMWERK firmware (likely Enel X cloud pushes it back)
-  - Workaround: configure Cox router DHCP to hand out `192.168.0.64` as DNS server (see ROADMAP Ready)
+  - Workaround: configure Cox router DHCP to hand out `<YOUR-NAS-IP>` as DNS server (see ROADMAP Ready)
   - Port correction: LOCAL_PORT and ENELX_SERVER_PORT fixed to 8042 (was 8047)
   - README rewritten with full protocol deep-dive, DNS approach rationale, troubleshooting guide
 - **juicepassproxy idle-state behavior documented (2026-04-18)**
-  - Confirmed charger (EMWERK-JB_1_1-1.4.0.28 firmware) only sends directed UDP when actively charging — broadcasts 192.168.0.141:55555 discovery packets when idle
-  - UDPC set to 192.168.0.64:8047 via telnet; Enel X cloud pushes its own stream back (charger sends to both when charging)
+  - Confirmed charger (EMWERK-JB_1_1-1.4.0.28 firmware) only sends directed UDP when actively charging — broadcasts <YOUR-JUICEBOX-IP>:55555 discovery packets when idle
+  - UDPC set to <YOUR-NAS-IP>:8047 via telnet; Enel X cloud pushes its own stream back (charger sends to both when charging)
   - MITM timeout (120s) causes container restart every ~3.3 hours when idle — expected behavior, not a bug; restarts immediately via Docker policy
   - Root cause of prior crashes confirmed: UPDATE_UDPC=true causes telnet timeout loop (readuntil mismatch) → 10 errors/60 min → crash; left as UPDATE_UDPC=false
   - DNS approach at router is the recommended long-term fix for persistent UDPC without UPDATE_UDPC
 - **Full NAS deployment (2026-04-18)**
   - Deployed Mosquitto + JuicePassProxy + juicebox-mcp to `/volume1/docker/claude-juicebox`
-  - Fixed LOCAL_IP auto-detection (VPN tun0 interference) via `LOCAL_IP=192.168.0.64` env var
+  - Fixed LOCAL_IP auto-detection (VPN tun0 interference) via `LOCAL_IP=<YOUR-NAS-IP>` env var
   - Added `juicepassproxy-config` volume for persistence
-  - UDPC redirect successful — JuiceBox now sends UDP to `192.168.0.64:8047`
+  - UDPC redirect successful — JuiceBox now sends UDP to `<YOUR-NAS-IP>:8047`
   - Live charger data confirmed streaming via MQTT (Status: Charging, 124W, 247V)
   - Rewrote `juiceboxClient.js` for JuicePassProxy v0.5.x `hmd/` topic structure
-  - Connected to Claude Desktop at `http://192.168.0.64:3001/sse`; config confirmed in `claude_desktop_config.json` (2026-04-18)
+  - Connected to Claude Desktop at `http://<YOUR-NAS-IP>:3001/sse`; config confirmed in `claude_desktop_config.json` (2026-04-18)
 - Docker Compose architecture designed (Mosquitto + JuicePassProxy + MCP server)
 - PLAN.md with full implementation detail
 - MCP server scaffold and folder structure

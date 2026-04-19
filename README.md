@@ -18,7 +18,7 @@ JuiceBox Pro 40
     │  UDP telemetry (every ~26s when active)
     │  ──► resolves device-backend-udp-evos.juice.net → NAS (via juicebox-dns)
     ▼
-NAS : 192.168.0.64 : 8042
+NAS : <YOUR-NAS-IP> : 8042
     │
     │  JuicePassProxy (MITM)
     │  reads packets, publishes to MQTT, forwards originals to real Enel X
@@ -57,7 +57,7 @@ The JuiceBox has a telnet interface (port 2000) that lists and manages its activ
 # 0 UDPC  device-backend-udp-evos.juice.net:8042 (52733)
 ```
 
-When the DNS override is in place, this hostname resolves to the NAS (`192.168.0.64`). The charger sends its UDP telemetry to `192.168.0.64:8042`, JPP intercepts it, and forwards it on to the real Enel X IP.
+When the DNS override is in place, this hostname resolves to the NAS (`<YOUR-NAS-IP>`). The charger sends its UDP telemetry to `<YOUR-NAS-IP>:8042`, JPP intercepts it, and forwards it on to the real Enel X IP.
 
 ### MQTT topic structure (JPP v0.5.x)
 
@@ -106,24 +106,24 @@ JPP's `UPDATE_UDPC=true` mode uses telnet to check and update the UDPC setting e
 Instead of fighting the UDPC telnet interface, we make the charger's DNS resolution do the work:
 
 1. **`juicebox-dns`** (dnsmasq) runs on the NAS and listens on port 53.
-2. It resolves `device-backend-udp-evos.juice.net` → `192.168.0.64` (NAS IP).
+2. It resolves `device-backend-udp-evos.juice.net` → `<YOUR-NAS-IP>` (NAS IP).
 3. It forwards all other queries to `8.8.8.8` normally.
-4. The JuiceBox must be configured to use `192.168.0.64` as its DNS server (see below).
+4. The JuiceBox must be configured to use `<YOUR-NAS-IP>` as its DNS server (see below).
 
-When the Enel X cloud management channel pushes a new UDPC config (`device-backend-udp-evos.juice.net:8042`), the charger resolves that hostname through our dnsmasq and sends UDP to `192.168.0.64:8042` instead of the real Enel X server.
+When the Enel X cloud management channel pushes a new UDPC config (`device-backend-udp-evos.juice.net:8042`), the charger resolves that hostname through our dnsmasq and sends UDP to `<YOUR-NAS-IP>:8042` instead of the real Enel X server.
 
 JPP then receives the packet and forwards it to the real `158.47.3.128:8042`.
 
 ### Getting the JuiceBox to use our DNS
 
-The JuiceBox uses DHCP (`wlan.dhcp.enabled` reverts to `1` after reboot on EMWERK firmware — see [troubleshooting](#wlandhcpenabled-reverts-to-1-after-charger-reboot)). The solution is to make dnsmasq also serve as the DHCP server for the JuiceBox, handing it `192.168.0.64` as its DNS server via the DHCP lease itself.
+The JuiceBox uses DHCP (`wlan.dhcp.enabled` reverts to `1` after reboot on EMWERK firmware — see [troubleshooting](#wlandhcpenabled-reverts-to-1-after-charger-reboot)). The solution is to make dnsmasq also serve as the DHCP server for the JuiceBox, handing it `<YOUR-NAS-IP>` as its DNS server via the DHCP lease itself.
 
 #### How it works
 
 `juicebox-dns` (dnsmasq) runs in **host network mode** so it can receive DHCP broadcasts. It is configured to:
 
 - **Only respond to the JuiceBox Wi-Fi MAC** (`52:D4:F7:14:50:E8`) — all other DHCP requests are silently ignored
-- **Assign** `192.168.0.2` with DNS `192.168.0.64` and gateway `192.168.0.1`
+- **Assign** `<YOUR-JUICEBOX-IP>` with DNS `<YOUR-NAS-IP>` and gateway `<YOUR-ROUTER-IP>`
 - **Ignore** all other MACs (`dhcp-ignore=tag:!known`) — the Cox router continues to handle DHCP for all other devices
 
 > **MAC note:** The JuiceBox has two MACs. The hardware/ZentriOS MAC (`4C:55:CC:14:50:E8`) appears in `get network.mac` via telnet. The Wi-Fi interface MAC (`52:D4:F7:14:50:E8`) is what the charger actually uses in DHCP frames. `dhcp-host` **must** use the Wi-Fi MAC or dnsmasq will silently ignore all JuiceBox DHCP requests.
@@ -137,9 +137,9 @@ To eliminate the race condition between dnsmasq and the Cox router, the Cox DHCP
 
 #### One-time Cox router changes
 
-Browse to `http://192.168.0.1` → **Gateway → Connection → Local IP Network**.
+Browse to `http://<YOUR-ROUTER-IP>` → **Gateway → Connection → Local IP Network**.
 
-1. Change **DHCP Starting Address** from `192.168.0.2` → `192.168.0.3` (removes `.2` from Cox's pool permanently)
+1. Change **DHCP Starting Address** from `<YOUR-JUICEBOX-IP>` → `<YOUR-DHCP-START>` (removes `.2` from Cox's pool permanently)
 2. Change **DHCP Ending Address** to end below any IP the JuiceBox might currently hold — in practice `.196` works well
 
 Save Settings. After the JuiceBox is stable at `.2`, the ending address restriction matters less (Cox can't offer `.2` regardless since it starts at `.3`).
@@ -150,7 +150,7 @@ The NAS (Synology DSM) and all Docker containers use their own DNS (configured v
 
 ### Cox router note
 
-Cox Panoramic's Local IP Configuration page does not expose a DNS server field in DHCP settings — it always hands out the router itself (`192.168.0.1`) as DNS. The dnsmasq DHCP approach sidesteps this entirely by having dnsmasq serve the JuiceBox directly.
+Cox Panoramic's Local IP Configuration page does not expose a DNS server field in DHCP settings — it always hands out the router itself (`<YOUR-ROUTER-IP>`) as DNS. The dnsmasq DHCP approach sidesteps this entirely by having dnsmasq serve the JuiceBox directly.
 
 ---
 
@@ -158,8 +158,8 @@ Cox Panoramic's Local IP Configuration page does not expose a DNS server field i
 
 ### Prerequisites
 
-- Synology NAS at `192.168.0.64` with Docker / Container Manager
-- JuiceBox at `192.168.0.141` on the same LAN
+- Synology NAS at `<YOUR-NAS-IP>` with Docker / Container Manager
+- JuiceBox at `<YOUR-JUICEBOX-IP>` on the same LAN
 - Port `53` (DNS), `67` (DHCP), `1883` (MQTT), `3001` (MCP), `8042` (JPP) free on the NAS
 - SSH access + a GitHub deploy key (see `claude-synology` skill for setup)
 
@@ -187,10 +187,10 @@ The charger's WiFi config can be set to static networking so it uses the NAS as 
 Connect via the charger's telnet interface (port 2000) and run:
 
 ```
-set wlan.static.ip 192.168.0.141
-set wlan.static.gateway 192.168.0.1
+set wlan.static.ip <YOUR-JUICEBOX-IP>
+set wlan.static.gateway <YOUR-ROUTER-IP>
 set wlan.static.netmask 255.255.255.0
-set wlan.static.dns 192.168.0.64
+set wlan.static.dns <YOUR-NAS-IP>
 set wlan.dhcp.enabled 0
 save
 reboot
@@ -206,7 +206,7 @@ import asyncio, telnetlib3
 
 async def configure():
     reader, writer = await asyncio.wait_for(
-        telnetlib3.open_connection('192.168.0.141', 2000, encoding=False), timeout=10)
+        telnetlib3.open_connection('<YOUR-JUICEBOX-IP>', 2000, encoding=False), timeout=10)
     # wait for prompt
     data = b''
     while b'>' not in data:
@@ -224,10 +224,10 @@ async def configure():
             except: pass
         print(f'{s!r} → {out.decode(errors="replace").strip()!r}')
 
-    await cmd('set wlan.static.ip 192.168.0.141')
-    await cmd('set wlan.static.gateway 192.168.0.1')
+    await cmd('set wlan.static.ip <YOUR-JUICEBOX-IP>')
+    await cmd('set wlan.static.gateway <YOUR-ROUTER-IP>')
     await cmd('set wlan.static.netmask 255.255.255.0')
-    await cmd('set wlan.static.dns 192.168.0.64')
+    await cmd('set wlan.static.dns <YOUR-NAS-IP>')
     await cmd('set wlan.dhcp.enabled 0')
     await cmd('save')
     await cmd('reboot')
@@ -246,7 +246,7 @@ After the charger reboots (~30 seconds), check that it's using the NAS DNS and t
 docker logs juicebox-dns | grep juicebox
 
 # Listen for charger UDP on port 8042
-sudo tcpdump -i any -n 'src host 192.168.0.141 and udp port 8042' -c 5
+sudo tcpdump -i any -n 'src host <YOUR-JUICEBOX-IP> and udp port 8042' -c 5
 
 # Watch MQTT topics for charger data (requires car plugged in)
 docker exec -it juicebox-mosquitto mosquitto_sub -t 'hmd/#' -v
@@ -271,7 +271,7 @@ The deployed charger runs **ZentriOS-WZ** (by Silicon Labs / Zentri) via the EMW
 
 ### Useful telnet commands
 
-Connect: `telnet 192.168.0.141 2000` (or use the docker exec script above)
+Connect: `telnet <YOUR-JUICEBOX-IP> 2000` (or use the docker exec script above)
 
 | Command | Description |
 |---------|-------------|
@@ -300,7 +300,7 @@ Add to `%APPDATA%\Claude\claude_desktop_config.json`:
   "mcpServers": {
     "juicebox": {
       "type": "sse",
-      "url": "http://192.168.0.64:3001/sse"
+      "url": "http://<YOUR-NAS-IP>:3001/sse"
     }
   }
 }
@@ -332,7 +332,7 @@ Observed on EMWERK-JB_1_1-1.4.0.28 firmware. Setting `wlan.dhcp.enabled 0` and `
 
 Root cause is likely the Enel X cloud management channel pushing the network config back on connect. The charger cannot be run without cloud access, so fighting this isn't practical.
 
-**Workaround:** Use Option A — configure the Cox router to hand out `192.168.0.64` as the DHCP DNS server. The charger gets our dnsmasq via DHCP, no static config needed. See [Getting the JuiceBox to use our DNS](#getting-the-juicebox-to-use-our-dns).
+**Workaround:** Use Option A — configure the Cox router to hand out `<YOUR-NAS-IP>` as the DHCP DNS server. The charger gets our dnsmasq via DHCP, no static config needed. See [Getting the JuiceBox to use our DNS](#getting-the-juicebox-to-use-our-dns).
 
 ### DNS not working after charger reboot
 
@@ -344,7 +344,7 @@ docker restart juicebox-dns
 docker exec juicepassproxy python3 -c "
 import asyncio, telnetlib3
 async def r():
-    rd, wr = await telnetlib3.open_connection('192.168.0.141', 2000, encoding=False)
+    rd, wr = await telnetlib3.open_connection('<YOUR-JUICEBOX-IP>', 2000, encoding=False)
     import time; e=time.time()+3; d=b''
     while time.time()<e:
         try: d+=await asyncio.wait_for(rd.read(256),0.5)
@@ -360,7 +360,7 @@ asyncio.run(r())
 docker exec juicepassproxy python3 -c "
 import asyncio, telnetlib3
 async def check():
-    r,w = await telnetlib3.open_connection('192.168.0.141',2000,encoding=False)
+    r,w = await telnetlib3.open_connection('<YOUR-JUICEBOX-IP>',2000,encoding=False)
     import time; e=time.time()+3; d=b''
     while time.time()<e:
         try: d+=await asyncio.wait_for(r.read(256),0.5)
@@ -376,7 +376,7 @@ asyncio.run(check())
 "
 ```
 
-Expected output: `wlan.network.dns: 192.168.0.64` (static DNS, our NAS)
+Expected output: `wlan.network.dns: <YOUR-NAS-IP>` (static DNS, our NAS)
 
 ### MQTT topics don't match
 
@@ -394,7 +394,7 @@ If topics are different, set `MQTT_STATE_TOPIC` and `MQTT_CMD_TOPIC` in `.env` a
 docker exec juicepassproxy python3 - <<'EOF'
 import asyncio, telnetlib3
 async def revert():
-    r,w = await telnetlib3.open_connection('192.168.0.141',2000,encoding=False)
+    r,w = await telnetlib3.open_connection('<YOUR-JUICEBOX-IP>',2000,encoding=False)
     import time; e=time.time()+3; d=b''
     while time.time()<e:
         try: d+=await asyncio.wait_for(r.read(256),0.5)

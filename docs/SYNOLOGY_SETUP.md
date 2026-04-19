@@ -1,6 +1,6 @@
 # Synology NAS Setup Guide
 
-Deploy the full JuiceBox stack (JuicePassProxy + Mosquitto + MCP server) on your Synology NAS at `192.168.0.64`.
+Deploy the full JuiceBox stack (JuicePassProxy + Mosquitto + MCP server) on your Synology NAS at `<YOUR-NAS-IP>`.
 
 ---
 
@@ -8,7 +8,7 @@ Deploy the full JuiceBox stack (JuicePassProxy + Mosquitto + MCP server) on your
 
 - Docker and Docker Compose installed on the NAS (via Package Center → Container Manager)
 - SSH access to the NAS
-- JuiceBox Pro 40 reachable at `192.168.0.141`
+- JuiceBox Pro 40 reachable at `<YOUR-JUICEBOX-IP>`
 - Ports `8042/udp` and `3001/tcp` free on the NAS
 
 Check ports via SSH:
@@ -40,7 +40,7 @@ nano .env
 
 Set at minimum:
 ```
-JUICEBOX_HOST=192.168.0.141
+JUICEBOX_HOST=<YOUR-JUICEBOX-IP>
 JUICEBOX_ID=JuiceBox-0E8
 ```
 
@@ -112,7 +112,7 @@ Then restart the MCP container: `docker-compose restart juicebox-mcp`
 
 In Claude Code settings, add a new MCP server:
 ```
-http://192.168.0.64:3001/sse
+http://<YOUR-NAS-IP>:3001/sse
 ```
 (Change `3001` if you set a different `MCP_PORT`.)
 
@@ -123,7 +123,7 @@ Test it by asking Claude: *"What is the status of my JuiceBox charger?"*
 ## Step 7 — Health check
 
 ```bash
-curl http://192.168.0.64:3001/health
+curl http://<YOUR-NAS-IP>:3001/health
 # {"ok":true,"mqtt_connected":true,"schedule_jobs":0}
 ```
 
@@ -150,7 +150,7 @@ curl http://192.168.0.64:3001/health
 If you ever want to point the JuiceBox back at the Enel X cloud:
 
 ```bash
-telnet 192.168.0.141
+telnet <YOUR-JUICEBOX-IP>
 set udpc juicenet-udp-prod3-usa.enelx.com:8042
 save
 reboot

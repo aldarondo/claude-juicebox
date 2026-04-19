@@ -10,8 +10,8 @@
  *   fetching TOU rates from the Enphase MCP and deciding the cheapest windows.
  *   An internal cron scheduler executes start/stop commands at the right times.
  *
- * Add to Claude:  http://192.168.0.64:3001/sse  (or your MCP_PORT)
- * Health check:   http://192.168.0.64:3001/health
+ * Add to Claude:  http://<YOUR-NAS-IP>:3001/sse  (or your MCP_PORT)
+ * Health check:   http://<YOUR-NAS-IP>:3001/health
  */
 
 import express from "express";

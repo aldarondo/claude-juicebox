@@ -161,13 +161,13 @@ Create the file if it doesn't exist.
 {
   "mcpServers": {
     "juicebox": {
-      "url": "http://192.168.0.64:3001/sse"
+      "url": "http://<YOUR-NAS-IP>:3001/sse"
     }
   }
 }
 ```
 
-Replace `192.168.0.64` with your NAS/Docker host IP, and `3001` with your `PORT` value if you changed it. If you already have other MCP servers configured, add the `"juicebox"` key inside the existing `"mcpServers"` object.
+Replace `<YOUR-NAS-IP>` with your NAS/Docker host IP, and `3001` with your `PORT` value if you changed it. If you already have other MCP servers configured, add the `"juicebox"` key inside the existing `"mcpServers"` object.
 
 ### 3. Restart Claude Desktop
 
@@ -180,7 +180,7 @@ Ask Claude Desktop: **"What is my JuiceBox charger status?"**
 Claude should call `get_charger_status` and return live data. If the tool list doesn't appear, check:
 
 - The Docker stack is running: `docker compose ps` (from repo root)
-- The SSE endpoint responds: `curl http://192.168.0.64:3001/health`
+- The SSE endpoint responds: `curl http://<YOUR-NAS-IP>:3001/health`
 - No firewall is blocking port 3001 between your Mac/PC and the NAS
 
 ### Example prompts

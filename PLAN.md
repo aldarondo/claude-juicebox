@@ -13,9 +13,9 @@ and expose it as an MCP server so Claude can monitor and control it.
 |------|-------|
 | Charger model | JuiceBox Pro 40 |
 | Charger name | JuiceBox-0E8 |
-| Charger local IP | `192.168.0.141` (configurable in `.env`) |
+| Charger local IP | `<YOUR-JUICEBOX-IP>` (configurable in `.env`) |
 | Max amperage | 40A |
-| NAS IP | `192.168.0.64` |
+| NAS IP | `<YOUR-NAS-IP>` |
 | MCP server language | Node.js |
 
 ---
@@ -27,7 +27,7 @@ JuiceBox Pro 40 (UDP :8042)
          │
          ▼  (one-time UDPC update — automatic, see Step 2)
   ┌──────────────────────┐
-  │    JuicePassProxy    │  Docker on Synology @ 192.168.0.64
+  │    JuicePassProxy    │  Docker on Synology @ <YOUR-NAS-IP>
   └──────────┬───────────┘
              │ publishes state via MQTT
              ▼
@@ -43,7 +43,7 @@ JuiceBox Pro 40 (UDP :8042)
              │ MCP over SSE
              ▼
        Claude / Cowork
-       → Add server: http://192.168.0.64:3001/sse
+       → Add server: http://<YOUR-NAS-IP>:3001/sse
 ```
 
 ---
@@ -62,8 +62,8 @@ destination for its UDP traffic. This is a one-time change stored on the charger
 
 **What it does under the hood:**
 ```
-telnet 192.168.0.141  (into the JuiceBox)
-→ set udpc 192.168.0.64:8042
+telnet <YOUR-JUICEBOX-IP>  (into the JuiceBox)
+→ set udpc <YOUR-NAS-IP>:8042
 → save
 → reboot
 ```
@@ -85,14 +85,14 @@ Deploys three containers on the Synology NAS:
 | `juicebox-mcp` | Built from `./mcp-server` | `MCP_PORT` (default 3001) |
 
 Note: `juicepassproxy` runs in **host network mode** so it can directly reach
-`192.168.0.141`. The other two containers use the default bridge network.
+`<YOUR-JUICEBOX-IP>`. The other two containers use the default bridge network.
 
 ---
 
 ### `.env.example`
 ```
 # JuiceBox
-JUICEBOX_HOST=192.168.0.141
+JUICEBOX_HOST=<YOUR-JUICEBOX-IP>
 JUICEBOX_ID=JuiceBox-0E8
 
 # First-time setup only: set to true to auto-update the charger's UDPC setting
@@ -146,13 +146,13 @@ WebSocket listener on 9001 for optional debugging.
 ### `docs/SYNOLOGY_SETUP.md`
 Step-by-step guide:
 1. SSH into NAS, clone repo to a shared folder
-2. Copy `.env.example` → `.env`, set `JUICEBOX_HOST=192.168.0.141`
+2. Copy `.env.example` → `.env`, set `JUICEBOX_HOST=<YOUR-JUICEBOX-IP>`
 3. First run: set `UPDATE_UDPC=true` in `.env`
 4. Deploy: `docker-compose up -d` (or import via Container Manager UI)
 5. Watch logs to confirm UDPC update succeeded: `docker logs juicepassproxy`
 6. Set `UPDATE_UDPC=false`, restart juicepassproxy: `docker-compose restart juicepassproxy`
 7. Verify MQTT data: `docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v`
-8. Add MCP server to Claude: `http://192.168.0.64:3001/sse` (or your chosen `MCP_PORT`)
+8. Add MCP server to Claude: `http://<YOUR-NAS-IP>:3001/sse` (or your chosen `MCP_PORT`)
 9. Test by asking Claude: *"What is the status of my JuiceBox charger?"*
 
 ---

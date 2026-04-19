@@ -1,14 +1,13 @@
 # claude-juicebox — Roadmap
 
 ## Current Milestone
-End-to-end charging test + enphase-juicebox-coordinator integration
+✅ Project complete — stack is live, Claude Desktop connected, coordinator wired
 
 ### 🔨 In Progress
 [Empty]
 
 ### 🟢 Ready (Next Up)
-- **End-to-end charging test** — plug in car and verify JPP receives directed UDP on port 8042, MQTT topics `hmd/sensor/JuiceBox/*/state` populate with live charging data (current, power, energy)
-- **Wire into enphase-juicebox-coordinator** — connect set_charging_schedule to solar/TOU coordinator so Enphase data drives charging windows automatically
+[Empty]
 
 ### 📋 Backlog
 - Add MQTT topic documentation (charger → broker message format)
@@ -18,6 +17,9 @@ End-to-end charging test + enphase-juicebox-coordinator integration
 [Empty]
 
 ## ✅ Completed
+
+- **End-to-end charging test passed (2026-04-18)** — car plugged in, JPP received directed UDP, MQTT topics populated with live data
+- **Enphase-juicebox-coordinator wired (2026-04-18)** — coordinator calls `set_charging_schedule` via MCP SSE client; full loop: Enphase TOU tariff → optimizer → JuiceBox schedule
 - **DHCP intercept working — JuiceBox at .2 with DNS .64 (2026-04-18)**
   - Root cause of DHCP failure identified: dhcp-host had the ZentriOS hardware MAC (`4c:55:cc:14:50:e8`) instead of the Wi-Fi/DHCP MAC (`52:d4:f7:14:50:e8`) — dnsmasq was silently ignoring all JuiceBox DHCP requests due to mismatch
   - Cox DHCP starting address changed from .2 → .3 (permanently removes .2 from Cox's pool)

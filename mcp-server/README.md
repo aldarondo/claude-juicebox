@@ -105,15 +105,40 @@ Tests use [Vitest](https://vitest.dev/). The `mqtt` and `node-cron` packages are
 
 ## Deploying (Docker)
 
-The full stack — Mosquitto, JuicePassProxy, and this MCP server — is wired together by the **root `docker-compose.yml`** one level up:
+The full stack — DNS, Mosquitto, JuicePassProxy, and this MCP server — is wired together by the **root `docker-compose.yml`** one level up.
+
+All custom images are pre-built by GitHub Actions and hosted on GHCR. The NAS pulls them directly — no local build step required.
+
+| Service | Image |
+|---|---|
+| `juicepassproxy` | `ghcr.io/aldarondo/claude-juicebox-juicepassproxy:latest` |
+| `juicebox-mcp` | `ghcr.io/aldarondo/claude-juicebox-mcp:latest` |
+
+### First deploy
 
 ```bash
 # From the repo root (claude-juicebox/)
-cp .env.example .env   # if one exists, or create your own
+cp .env.example .env   # fill in JUICEBOX_HOST and any overrides
+docker compose pull
 docker compose up -d
 ```
 
-The `PORT` variable in your `.env` controls which host port the MCP server binds to (default `3001`). Both the host-side port mapping and the `PORT` env var inside the container use the same value, so you only need to set it once.
+### Updating to latest images
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+GitHub Actions rebuilds both images automatically:
+- `juicebox-mcp` — on any push to `mcp-server/`
+- `juicepassproxy` — on any push to `juicepassproxy/Dockerfile`, and weekly on Sundays to pick up upstream JPP releases
+
+### GHCR authentication (private repo)
+
+The NAS must be logged in to GHCR to pull the images. One-time setup — see the Synology skill documentation for the full command using the stored PAT.
+
+The `PORT` variable in your `.env` controls which host port the MCP server binds to (default `3001`).
 
 ---
 

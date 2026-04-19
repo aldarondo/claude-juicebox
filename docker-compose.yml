@@ -53,7 +53,7 @@ services:
       - juicebox-mosquitto
 
   juicebox-mcp:
-    build: ./mcp-server
+    image: ghcr.io/aldarondo/claude-juicebox-mcp:latest
     container_name: juicebox-mcp
     ports:
       - "${PORT:-3001}:${PORT:-3001}"

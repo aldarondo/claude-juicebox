@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
   juicepassproxy:
-    image: ghcr.io/juicerescue/juicepassproxy:latest
+    build: ./juicepassproxy   # custom image — patches MITM_RECV_TIMEOUT to be env-configurable
     container_name: juicepassproxy
     # Host network required so it can receive UDP from the JuiceBox at 192.168.0.141
     # and so it can reach Mosquitto on localhost:1883
@@ -47,6 +47,7 @@ services:
       - MQTT_PASS=${MQTT_PASS:-}
       - ENELX_SERVER_HOST=${ENELX_SERVER_HOST:-device-backend-udp-evos.juice.net}  # actual Enel X UDP hostname for this charger
       - ENELX_SERVER_PORT=${ENELX_SERVER_PORT:-8042}   # actual Enel X UDP port
+      - MITM_RECV_TIMEOUT=${MITM_RECV_TIMEOUT:-600}    # upstream default 120s causes restarts every ~3.3 hrs at idle; 600s = ~10 min
     restart: unless-stopped
     depends_on:
       - juicebox-mosquitto
@@ -61,12 +62,6 @@ services:
       - MQTT_BROKER=mqtt://juicebox-mosquitto:1883
       - MQTT_USER=${MQTT_USER:-}
       - MQTT_PASS=${MQTT_PASS:-}
-      - JUICEBOX_ID=${JUICEBOX_ID:-JuiceBox-0E8}
-      # Override these if JuicePassProxy uses different topic names.
-      # Run: docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v
-      # to see the actual topics being published before changing these.
-      - MQTT_STATE_TOPIC=${MQTT_STATE_TOPIC:-}
-      - MQTT_CMD_TOPIC=${MQTT_CMD_TOPIC:-}
     restart: unless-stopped
     depends_on:
       - juicebox-mosquitto

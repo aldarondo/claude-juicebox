@@ -6,7 +6,6 @@ on:
     paths:
       - mcp-server/**
   schedule:
-    # Rebuild weekly (Sunday 03:00 UTC) to pick up Node base image security patches
     - cron: "0 3 * * 0"
   workflow_dispatch:
 
@@ -37,17 +36,18 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/claude-juicebox-mcp:latest
             ghcr.io/${{ github.repository_owner }}/claude-juicebox-mcp:${{ github.sha }}
 
+      - name: Install cloudflared
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb && sudo apt-get install -y sshpass
+
       - name: Deploy to NAS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: 192.168.0.64
-          port: 2222
-          username: charles
-          password: ${{ secrets.NAS_SSH_PASSWORD }}
-          script_stop: true
-          envs: NAS_PASS
-          script: |
-            echo "$NAS_PASS" | sudo -S /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml pull
-            echo "$NAS_PASS" | sudo -S /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml up -d
         env:
           NAS_PASS: ${{ secrets.NAS_SSH_PASSWORD }}
+          SSHPASS: ${{ secrets.NAS_SSH_PASSWORD }}
+        run: |
+          sshpass -e ssh -o StrictHostKeyChecking=no \
+            -o "ProxyCommand=cloudflared access ssh --hostname nas-ssh.aldarondo.family" \
+            charles@nas-ssh.aldarondo.family \
+            "echo \"$NAS_PASS\" | sudo -S /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml pull && \
+             echo \"$NAS_PASS\" | sudo -S /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml up -d"

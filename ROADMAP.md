@@ -67,3 +67,7 @@
 - MCP tool: `set_charging_schedule` — program weekly TOU-aware charging windows (2026-04-14)
 - 23 unit tests — all pass (juiceboxClient + schedule tools) (2026-04-14)
 - mcp-server/README.md with full tool reference and Docker deploy guide (2026-04-14)
+
+## 🚫 Blocked
+- ❌ [docker-monitor:container-stopped] Container `juicepassproxy` is not running on the NAS — check `docker logs juicepassproxy` and restart — 2026-04-21 08:42 UTC
+- ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #24640206373) — https://github.com/aldarondo/claude-juicebox/actions/runs/24640206373 — 2026-04-21 08:00 UTC

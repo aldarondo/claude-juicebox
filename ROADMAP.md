@@ -17,6 +17,8 @@
 
 ## ✅ Completed
 
+- **Deploy pipeline hardened against zombie containers and duplicate networks (2026-04-21)** — Fixed workflow file with merge conflict markers (broke since fedb63b), then resolved `juicepassproxy` container-stopped blocker by refactoring deploy step to use `compose stop/rm` + full-path docker network cleanup before `up -d`; all four services now deploy cleanly.
+
 - **End-to-end charging test passed (2026-04-18)** — car plugged in, JPP received directed UDP, MQTT topics populated with live data
 - **Enphase-juicebox-coordinator wired (2026-04-18)** — coordinator calls `set_charging_schedule` via MCP SSE client; full loop: Enphase TOU tariff → optimizer → JuiceBox schedule
 - **Custom JPP image with configurable MITM_RECV_TIMEOUT (2026-04-19)** — `juicepassproxy/Dockerfile` patches upstream image to read timeout from env var; `docker-compose.yml` sets `MITM_RECV_TIMEOUT=600` (reduces idle restarts from every ~3.3 hrs to ~10 min)
@@ -69,5 +71,4 @@
 - mcp-server/README.md with full tool reference and Docker deploy guide (2026-04-14)
 
 ## 🚫 Blocked
-- ❌ [docker-monitor:container-stopped] Container `juicepassproxy` is not running on the NAS — check `docker logs juicepassproxy` and restart — 2026-04-21 08:42 UTC
-- ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #24640206373) — https://github.com/aldarondo/claude-juicebox/actions/runs/24640206373 — 2026-04-21 08:00 UTC
+[Empty]

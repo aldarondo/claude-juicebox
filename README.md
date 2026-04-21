@@ -388,6 +388,37 @@ docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v
 
 If topics are different, set `MQTT_STATE_TOPIC` and `MQTT_CMD_TOPIC` in `.env` and restart the MCP container.
 
+### GitHub Actions deploy fails with "container name already in use" or "network is ambiguous"
+
+Caused by zombie containers or duplicate networks left over from a previous failed deploy. The automated deploy step handles this with `compose stop` + `compose rm` + explicit network removal before `up -d`. If it happens manually:
+
+```bash
+# SSH into the NAS, then:
+/usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml stop
+/usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml rm -f
+/usr/local/bin/docker network ls -q --filter name=claude-juicebox | xargs -r /usr/local/bin/docker network rm
+/usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml up -d
+```
+
+**Prevention:** The deploy workflow already runs this sequence automatically. The root cause is usually a prior deploy that was interrupted mid-recreation — each failed recreate can leave behind an intermediate container (e.g. `<hash>_juicebox-mcp`) and an orphan network. Running `compose stop/rm` before `up -d` clears both.
+
+### GitHub Actions workflow fails immediately with "workflow file issue" (no jobs start)
+
+This means the workflow YAML is invalid — most likely leftover **merge conflict markers** (`<<<<<<<`, `=======`, `>>>>>>>`) in the workflow file. Check:
+
+```bash
+grep -n "<<<<<<\|>>>>>>\|=======" .github/workflows/*.yml
+```
+
+If markers are present, resolve the conflict and push. The workflows only auto-trigger on changes to `mcp-server/**` or `juicepassproxy/Dockerfile`, so after fixing the workflow files you need to manually dispatch:
+
+```bash
+gh workflow run build-juicebox-mcp.yml
+gh workflow run build-juicepassproxy.yml
+```
+
+**Prevention:** Before merging any branch that touches workflow files, always verify with the grep above. The `gh workflow run` dispatch is the recovery path if auto-trigger paths weren't modified.
+
 ### Revert the charger to Enel X direct (undo DNS override)
 
 ```bash

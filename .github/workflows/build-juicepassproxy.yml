@@ -19,17 +19,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./juicepassproxy
           push: true
@@ -37,17 +37,3 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/claude-juicebox-juicepassproxy:latest
             ghcr.io/${{ github.repository_owner }}/claude-juicebox-juicepassproxy:${{ github.sha }}
 
-      - name: Deploy to NAS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: 192.168.0.64
-          port: 2222
-          username: charles
-          password: ${{ secrets.NAS_SSH_PASSWORD }}
-          script_stop: true
-          envs: NAS_PASS
-          script: |
-            echo "$NAS_PASS" | sudo -S /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml pull
-            echo "$NAS_PASS" | sudo -S /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml up -d
-        env:
-          NAS_PASS: ${{ secrets.NAS_SSH_PASSWORD }}

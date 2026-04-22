@@ -10,7 +10,10 @@
 [Empty]
 
 ### 📋 Backlog
-[Empty]
+
+- **Fix `stop_charging` — JuiceBox firmware ignores 0A command from JuicePassProxy** — Confirmed 2026-04-22: MQTT `Max-Current-Online-Wanted-/state` updates to 0.0 (JPP receives the command) but `Current` stays at ~31.6A and `Max-Current-Online-Device-` stays at 40 — the JuiceBox hardware never acts on it. Need to determine whether JPP's `send_cmd_message_to_juicebox()` is actually delivering the UDP command to the JuiceBox, or whether firmware EMWERK-JB_1_1-1.4.0.28 requires a different mechanism (e.g. dedicated pause/stop packet vs. a 0A current-limit packet). Until fixed, `stop_charging` is a no-op while the car is actively charging.
+
+- **Fix `set_charging_schedule` — does not stop an active charging session** — When a new schedule is pushed that doesn't cover the current time, the JuiceBox continues the in-progress session until the schedule's next stop cron fires. `set_charging_schedule` should call `stopCharging()` immediately after clearing the old schedule if the current time falls outside all windows in the new schedule. Blocked on `stop_charging` actually working (see above).
 
 ### 🔴 Blocked
 [Empty]

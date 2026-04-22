@@ -65,6 +65,8 @@ services:
       - MQTT_BROKER=mqtt://juicebox-mosquitto:1883
       - MQTT_USER=${MQTT_USER:-}
       - MQTT_PASS=${MQTT_PASS:-}
+    volumes:
+      - mcp-logs:/logs
     restart: unless-stopped
     depends_on:
       - juicebox-mosquitto
@@ -73,3 +75,4 @@ volumes:
   mosquitto-data:
   mosquitto-log:
   juicepassproxy-config:
+  mcp-logs:

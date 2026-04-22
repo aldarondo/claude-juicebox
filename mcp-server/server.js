@@ -16,13 +16,40 @@
 
 import express from "express";
 import cron    from "node-cron";
+import { appendFileSync, readFileSync, existsSync, statSync, renameSync } from "fs";
 import { McpServer }        from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import * as juicebox from "./juiceboxClient.js";
 import { isTimeInSchedule } from "./scheduleUtils.js";
 
-const PORT = process.env.PORT || 3001;
+const PORT     = process.env.PORT     || 3001;
+const LOG_FILE = process.env.LOG_FILE || "/logs/mcp.log";
+const LOG_MAX_BYTES = 500_000; // rotate at 500 KB
+
+function writeLogFile(line) {
+  try {
+    if (existsSync(LOG_FILE) && statSync(LOG_FILE).size > LOG_MAX_BYTES) {
+      renameSync(LOG_FILE, LOG_FILE + ".1");
+    }
+    appendFileSync(LOG_FILE, line + "\n");
+  } catch { /* non-fatal — local dev may not have /logs */ }
+}
+
+// Patch console so all output (including juiceboxClient.js) goes to both
+// stdout and the persistent log file.
+const _log = console.log.bind(console);
+const _err = console.error.bind(console);
+console.log = (...args) => {
+  const line = `[${new Date().toISOString()}] INFO  ${args.join(" ")}`;
+  _log(line);
+  writeLogFile(line);
+};
+console.error = (...args) => {
+  const line = `[${new Date().toISOString()}] ERROR ${args.join(" ")}`;
+  _err(line);
+  writeLogFile(line);
+};
 
 // Connect to MQTT on startup
 juicebox.connect();
@@ -150,6 +177,22 @@ export function createMcpServer() {
         mqtt_connected:      juicebox.isConnected(),
         state_data_received: s !== null,
       }, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "get_logs",
+    "Returns recent MCP server log entries from the persistent log file. " +
+    "Log survives container replacement — use this to diagnose past events after a redeploy.",
+    { lines: z.number().min(1).max(2000).optional().describe("Number of recent lines to return (default 200)") },
+    async ({ lines = 200 } = {}) => {
+      if (!existsSync(LOG_FILE)) {
+        return { content: [{ type: "text", text: `No log file found at ${LOG_FILE} — container may not have a /logs volume mounted.` }] };
+      }
+      const content = readFileSync(LOG_FILE, "utf8");
+      const all = content.split("\n").filter(Boolean);
+      const recent = all.slice(-lines).join("\n");
+      return { content: [{ type: "text", text: recent || "(log file is empty)" }] };
     }
   );
 

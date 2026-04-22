@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
   juicepassproxy:
-    image: ghcr.io/aldarondo/claude-juicebox-juicepassproxy:latest   # built by .github/workflows/build-juicepassproxy.yml
+    image: ghcr.io/aldarondo/claude-juicebox-juicepassproxy:${JPP_IMAGE_TAG:-latest}   # built by .github/workflows/build-juicepassproxy.yml
     container_name: juicepassproxy
     # Host network required so it can receive UDP from the JuiceBox at 192.168.0.141
     # and so it can reach Mosquitto on localhost:1883
@@ -56,7 +56,7 @@ services:
       - juicebox-mosquitto
 
   juicebox-mcp:
-    image: ghcr.io/aldarondo/claude-juicebox-mcp:latest
+    image: ghcr.io/aldarondo/claude-juicebox-mcp:${MCP_IMAGE_TAG:-latest}
     container_name: juicebox-mcp
     ports:
       - "${PORT:-3001}:${PORT:-3001}"
@@ -68,6 +68,12 @@ services:
     volumes:
       - mcp-logs:/logs
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-3001}/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       - juicebox-mosquitto
 

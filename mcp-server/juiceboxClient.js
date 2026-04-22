@@ -28,6 +28,7 @@
  */
 
 import mqtt from "mqtt";
+import { STATUS, MQTT_CMD } from "./constants.js";
 
 const BROKER  = process.env.MQTT_BROKER || "mqtt://localhost:1883";
 const DEVICE  = "JuiceBox";  // JPP v0.5 uses the fixed name "JuiceBox" not the ID
@@ -77,9 +78,9 @@ function handleMessage(topic, payload) {
 
   // Track session start time
   if (mapping.key === "status") {
-    if (val === "Charging" && prev !== "Charging") {
+    if (val === STATUS.CHARGING && prev !== STATUS.CHARGING) {
       sessionStart = new Date();
-    } else if (val !== "Charging") {
+    } else if (val !== STATUS.CHARGING) {
       sessionStart = null;
     }
   }
@@ -115,7 +116,7 @@ function publish(topic, payload) {
 // Public API
 // ---------------------------------------------------------------------------
 
-export function getState()        { return Object.keys(state).length ? { ...state } : null; }
+export function getState()        { return Object.keys(state).length ? structuredClone(state) : null; }
 export function getSessionStart() { return sessionStart; }
 export function isConnected()     { return mqttClient?.connected ?? false; }
 
@@ -125,8 +126,8 @@ export function isConnected()     { return mqttClient?.connected ?? false; }
  */
 export function startCharging(amps = 32) {
   if (amps < 6 || amps > 40) throw new RangeError("amps must be 6–40");
-  publish(`${HMD}/number/${DEVICE}/Max-Current-Offline-Wanted-/command`, amps);
-  publish(`${HMD}/number/${DEVICE}/Max-Current-Online-Wanted-/command`, amps);
+  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.OFFLINE_WANTED}/command`, amps);
+  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.ONLINE_WANTED}/command`, amps);
 }
 
 /**
@@ -137,8 +138,8 @@ export function startCharging(amps = 32) {
  */
 export function stopCharging() {
   // Offline limit must be set or JPP errors: "Must have both current_max defined"
-  publish(`${HMD}/number/${DEVICE}/Max-Current-Offline-Wanted-/command`, 32);
-  publish(`${HMD}/number/${DEVICE}/Max-Current-Online-Wanted-/command`, 0);
+  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.OFFLINE_WANTED}/command`, 32);
+  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.ONLINE_WANTED}/command`, 0);
 }
 
 /**
@@ -146,6 +147,6 @@ export function stopCharging() {
  */
 export function setCurrentLimit(amps) {
   if (amps < 6 || amps > 40) throw new RangeError("amps must be 6–40");
-  publish(`${HMD}/number/${DEVICE}/Max-Current-Offline-Wanted-/command`, amps);
-  publish(`${HMD}/number/${DEVICE}/Max-Current-Online-Wanted-/command`, amps);
+  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.OFFLINE_WANTED}/command`, amps);
+  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.ONLINE_WANTED}/command`, amps);
 }

@@ -79,7 +79,7 @@ Commands are published to:
 hmd/number/JuiceBox/Max-Current-Online-Wanted-/command   # set amperage (0 = stop)
 ```
 
-> **Note:** Earlier JPP versions (pre-0.5) used a single JSON blob at `juicebox/<ID>/state`. If you see no data, run `docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v` to inspect actual topics and update `MQTT_STATE_TOPIC` / `MQTT_CMD_TOPIC` in `.env`.
+> **Note:** Earlier JPP versions (pre-0.5) used a single JSON blob at `juicebox/<ID>/state`. If you see no data, run `docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v` to inspect actual topics and update `FIELD_MAP` in `mcp-server/juiceboxClient.js` to match.
 
 ### When does the charger send UDP?
 
@@ -291,6 +291,49 @@ Workaround: the DNS override makes UDPC management unnecessary. The charger's cl
 
 ---
 
+## Testing
+
+### Unit tests
+
+```bash
+cd mcp-server && npm test
+```
+
+All tests run without any external dependencies — MQTT, cron, and the MCP SDK are mocked.
+
+### Integration testing against a live broker
+
+Before deploying, you can verify the MCP server connects and responds correctly against a real Mosquitto instance:
+
+```bash
+# 1. Start Mosquitto locally (or use docker compose)
+docker compose up -d juicebox-mosquitto
+
+# 2. Start the MCP server pointing at local broker
+cd mcp-server
+MQTT_BROKER=mqtt://localhost:1883 node server.js
+
+# 3. In another terminal — confirm health endpoint responds
+curl http://localhost:3001/health
+# Expected: {"ok":true,"mqtt_connected":true,"schedule_jobs":0}
+
+# 4. Simulate charger telemetry arriving on MQTT
+docker exec juicebox-mosquitto mosquitto_pub \
+  -t hmd/sensor/JuiceBox/Status/state -m "Plugged In"
+docker exec juicebox-mosquitto mosquitto_pub \
+  -t hmd/sensor/JuiceBox/Power/state -m "0"
+docker exec juicebox-mosquitto mosquitto_pub \
+  -t hmd/sensor/JuiceBox/Current/state -m "0"
+docker exec juicebox-mosquitto mosquitto_pub \
+  -t hmd/sensor/JuiceBox/Voltage/state -m "240"
+
+# 5. Watch MCP tool output — ask Claude: "What is the status of my charger?"
+#    Or hit the SSE endpoint directly:
+curl -N http://localhost:3001/sse
+```
+
+---
+
 ## Connecting Claude Desktop
 
 Add to `%APPDATA%\Claude\claude_desktop_config.json`:
@@ -386,7 +429,7 @@ JPP v0.5.x uses `hmd/sensor/JuiceBox/*/state` topics, not `juicebox/<ID>/state`.
 docker exec -it juicebox-mosquitto mosquitto_sub -t '#' -v
 ```
 
-If topics are different, set `MQTT_STATE_TOPIC` and `MQTT_CMD_TOPIC` in `.env` and restart the MCP container.
+If topics are different, update `FIELD_MAP` in `mcp-server/juiceboxClient.js` to match the actual topic names, then rebuild the image.
 
 ### GitHub Actions deploy fails with "container name already in use" or "network is ambiguous"
 

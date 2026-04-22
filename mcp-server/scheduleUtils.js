@@ -9,9 +9,9 @@
  * @param {Array} schedule - Array of schedule window objects
  * @param {Date} [now] - Override current time (for testing)
  */
-export function isTimeInSchedule(schedule, now = new Date()) {
+export function isTimeInSchedule(schedule, now = new Date(), tz = process.env.TZ_OVERRIDE || "America/Phoenix") {
   if (!schedule.length) return false;
-  const local = new Date(now.toLocaleString("en-US", { timeZone: "America/Phoenix" }));
+  const local = new Date(now.toLocaleString("en-US", { timeZone: tz }));
   const currentDay = ["sun","mon","tue","wed","thu","fri","sat"][local.getDay()];
   const currentMin = local.getHours() * 60 + local.getMinutes();
 

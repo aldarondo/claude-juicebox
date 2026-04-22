@@ -22,8 +22,10 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import * as juicebox from "./juiceboxClient.js";
 import { isTimeInSchedule } from "./scheduleUtils.js";
+import { STATUS } from "./constants.js";
 
 const PORT     = process.env.PORT     || 3001;
+const TZ       = process.env.TZ_OVERRIDE || "America/Phoenix";
 const LOG_FILE = process.env.LOG_FILE || "/logs/mcp.log";
 const LOG_MAX_BYTES = 500_000; // rotate at 500 KB
 
@@ -76,8 +78,12 @@ function clearSchedule() {
 
 
 // ---------------------------------------------------------------------------
-// Factory: create a new McpServer instance per connection (SDK 1.9+ requires
-// each transport to have its own server instance).
+// Factory: create a new McpServer instance per SSE connection.
+// MCP SDK 1.9+ requires one McpServer per transport — a single shared server
+// cannot be connected to more than one transport simultaneously. Claude Desktop
+// opens a fresh SSE connection on every session, so each GET /sse creates its
+// own server instance. Module-level state (scheduleJobs, activeSchedule) is
+// intentionally shared across all instances so schedules survive reconnects.
 // ---------------------------------------------------------------------------
 
 export function createMcpServer() {
@@ -126,7 +132,7 @@ export function createMcpServer() {
         ? +( s.session_energy_wh / 1000).toFixed(3)
         : null;
       return { content: [{ type: "text", text: JSON.stringify({
-        charging:           s.status === "Charging",
+        charging:           s.status === STATUS.CHARGING,
         session_energy_kwh: energyKwh,
         session_start:      start?.toISOString() ?? null,
         elapsed_minutes:    elapsedMin,
@@ -222,8 +228,12 @@ export function createMcpServer() {
         label:    z.string().optional().describe("Human-readable label, e.g. 'Weekday off-peak'"),
         days:     z.array(z.enum(["mon","tue","wed","thu","fri","sat","sun"])).min(1)
                    .describe("Days of week this window applies to"),
-        start:    z.string().regex(/^\d{2}:\d{2}$/).describe("Window open time HH:MM (24h, America/Phoenix)"),
-        end:      z.string().regex(/^\d{2}:\d{2}$/).describe("Window close time HH:MM (24h, America/Phoenix)"),
+        start:    z.string().regex(/^\d{2}:\d{2}$/)
+                   .refine(t => { const [h,m] = t.split(":").map(Number); return h < 24 && m < 60; }, "hours must be 0–23, minutes 0–59")
+                   .describe(`Window open time HH:MM (24h, ${TZ})`),
+        end:      z.string().regex(/^\d{2}:\d{2}$/)
+                   .refine(t => { const [h,m] = t.split(":").map(Number); return h < 24 && m < 60; }, "hours must be 0–23, minutes 0–59")
+                   .describe(`Window close time HH:MM (24h, ${TZ})`),
         max_amps: z.number().min(6).max(40).describe("Max charging current for this window (amps)"),
       })).describe("Charging windows. Pass [] to clear the schedule and stop all scheduled charging."),
     },
@@ -257,22 +267,36 @@ export function createMcpServer() {
 
         const startJob = cron.schedule(
           `${startM} ${startH} * * ${cronDays}`,
-          () => {
-            console.log(`[schedule] START charging at ${window.max_amps}A — ${label}`);
-            try { juicebox.startCharging(window.max_amps); }
-            catch (e) { console.error(`[schedule] Failed to start charging: ${e.message}`); }
-          },
-          { timezone: "America/Phoenix" }
+          (() => {
+            let fails = 0;
+            return () => {
+              console.log(`[schedule] START charging at ${window.max_amps}A — ${label}`);
+              try { juicebox.startCharging(window.max_amps); fails = 0; }
+              catch (e) {
+                fails++;
+                console.error(`[schedule] Failed to start charging (fail #${fails}): ${e.message}`);
+                if (fails >= 3) console.error(`[schedule] WARNING: ${fails} consecutive failures for "${label}" start — check MQTT`);
+              }
+            };
+          })(),
+          { timezone: TZ }
         );
 
         const stopJob = cron.schedule(
           `${endM} ${endH} * * ${cronDays}`,
-          () => {
-            console.log(`[schedule] STOP charging — ${label}`);
-            try { juicebox.stopCharging(); }
-            catch (e) { console.error(`[schedule] Failed to stop charging: ${e.message}`); }
-          },
-          { timezone: "America/Phoenix" }
+          (() => {
+            let fails = 0;
+            return () => {
+              console.log(`[schedule] STOP charging — ${label}`);
+              try { juicebox.stopCharging(); fails = 0; }
+              catch (e) {
+                fails++;
+                console.error(`[schedule] Failed to stop charging (fail #${fails}): ${e.message}`);
+                if (fails >= 3) console.error(`[schedule] WARNING: ${fails} consecutive failures for "${label}" stop — check MQTT`);
+              }
+            };
+          })(),
+          { timezone: TZ }
         );
 
         scheduleJobs.push(startJob, stopJob);

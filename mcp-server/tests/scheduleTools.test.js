@@ -354,6 +354,101 @@ describe("get_diagnostics — error paths", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// HTTP endpoint tests
+// ---------------------------------------------------------------------------
+
+const TEST_PORT = process.env.PORT || "3001";
+const BASE_URL = `http://localhost:${TEST_PORT}`;
+
+describe("HTTP endpoints", () => {
+  it("GET /health returns ok with expected fields", async () => {
+    const res = await fetch(`${BASE_URL}/health`);
+    expect(res.ok).toBe(true);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.mqtt_connected).toBe("boolean");
+    expect(typeof body.schedule_jobs).toBe("number");
+  });
+
+  it("GET /sse responds with text/event-stream content-type", async () => {
+    const controller = new AbortController();
+    const res = await fetch(`${BASE_URL}/sse`, { signal: controller.signal });
+    controller.abort();
+    expect(res.headers.get("content-type")).toMatch(/text\/event-stream/);
+  });
+
+  it("POST /messages with unknown sessionId returns 404", async () => {
+    const res = await fetch(`${BASE_URL}/messages?sessionId=does-not-exist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "ping" }),
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isTimeInSchedule — timezone / DST tests
+// ---------------------------------------------------------------------------
+
+describe("isTimeInSchedule — timezone / DST handling", () => {
+  // 2026-07-15 (Wed) 20:00 UTC = 16:00 EDT (UTC-4 summer) = 13:00 Phoenix (UTC-7 no-DST)
+  const JULY_WED_UTC = new Date("2026-07-15T20:00:00Z");
+  // 2026-01-15 (Thu) 20:00 UTC = 15:00 EST (UTC-5 winter) = 13:00 Phoenix (UTC-7 no-DST)
+  const JAN_THU_UTC = new Date("2026-01-15T20:00:00Z");
+
+  it("uses provided tz — same UTC time is 16:00 EDT but 13:00 Phoenix in July", () => {
+    const schedule = [{ days: ["wed"], start: "15:30", end: "16:30", max_amps: 32 }];
+    expect(isTimeInSchedule(schedule, JULY_WED_UTC, "America/New_York")).toBe(true);   // 16:00 EDT inside
+    expect(isTimeInSchedule(schedule, JULY_WED_UTC, "America/Phoenix")).toBe(false);   // 13:00 PHX outside
+  });
+
+  it("respects DST offset change — summer UTC-4 vs winter UTC-5 for New York", () => {
+    // Window 15:30–16:30 on Thursday: covers 16:00 EDT (July) but not 15:00 EST (January)
+    const schedule = [{ days: ["thu"], start: "15:30", end: "16:30", max_amps: 32 }];
+    expect(isTimeInSchedule(schedule, JAN_THU_UTC, "America/New_York")).toBe(false);  // 15:00 EST outside
+    // Use a window that covers 15:00 to confirm the January UTC-5 offset is applied
+    const earlySchedule = [{ days: ["thu"], start: "14:30", end: "15:30", max_amps: 32 }];
+    expect(isTimeInSchedule(earlySchedule, JAN_THU_UTC, "America/New_York")).toBe(true);  // 15:00 EST inside
+  });
+
+  it("TZ_OVERRIDE default falls back to America/Phoenix when not specified", () => {
+    // Phoenix (UTC-7): 20:00Z = 13:00 Phoenix. Window 12:30–13:30 Wed should match.
+    const schedule = [{ days: ["wed"], start: "12:30", end: "13:30", max_amps: 32 }];
+    // Call without explicit tz arg — uses process.env.TZ_OVERRIDE || "America/Phoenix"
+    expect(isTimeInSchedule(schedule, JULY_WED_UTC)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// set_charging_schedule — concurrency
+// ---------------------------------------------------------------------------
+
+describe("set_charging_schedule — concurrency", () => {
+  it("concurrent calls produce consistent final state (exactly one schedule, 2 jobs)", async () => {
+    await callTool("set_charging_schedule", { schedule: [] });
+    resetCronJobs();
+
+    const scheduleA = [{ days: ["mon"], start: "08:00", end: "10:00", max_amps: 16 }];
+    const scheduleB = [{ days: ["tue"], start: "20:00", end: "22:00", max_amps: 24 }];
+
+    await Promise.all([
+      callTool("set_charging_schedule", { schedule: scheduleA }),
+      callTool("set_charging_schedule", { schedule: scheduleB }),
+    ]);
+
+    const result = await callTool("get_charging_schedule", {});
+    const body = JSON.parse(result.content[0].text);
+
+    // One of the two schedules wins — state must be consistent (1 window, 2 jobs)
+    expect(body.schedule).toHaveLength(1);
+    expect(body.job_count).toBe(2);
+  });
+});
+
 describe("get_charging_schedule", () => {
   it("returns the last set schedule", async () => {
     const schedule = [

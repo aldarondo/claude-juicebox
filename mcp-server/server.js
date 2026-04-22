@@ -21,6 +21,7 @@ import { McpServer }        from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import * as juicebox from "./juiceboxClient.js";
+import * as zentrios from "./zentriosClient.js";
 import { isTimeInSchedule } from "./scheduleUtils.js";
 import { STATUS } from "./constants.js";
 
@@ -173,16 +174,101 @@ export function createMcpServer() {
 
   server.tool(
     "get_diagnostics",
-    "Returns firmware version, WiFi signal strength (dBm), and MQTT connection status.",
+    "Returns firmware version, WiFi signal strength (dBm), MQTT connection status, " +
+    "and live ZentriOS system info (uptime, memory, UUID).",
     {},
     async () => {
       const s = juicebox.getState();
+      let sysInfo = null;
+      let rssi = null;
+      try { sysInfo = await zentrios.getSystemInfo(); } catch { /* ZentriOS offline */ }
+      try { rssi = await zentrios.getRssi(); } catch {}
       return { content: [{ type: "text", text: JSON.stringify({
-        firmware_version:    s?.firmware_version ?? null,
-        wifi_signal_dbm:     s?.signal_dbm       ?? null,
+        firmware_version:    sysInfo?.["system.version"] ?? s?.firmware_version ?? null,
+        build_number:        sysInfo?.["system.build_number"] ?? null,
+        device_uuid:         sysInfo?.["system.uuid"] ?? null,
+        uptime_seconds:      sysInfo?.["time.uptime"] ?? null,
+        memory_usage:        sysInfo?.["system.memory.usage"] ?? null,
+        wifi_rssi:           rssi ?? null,
+        wifi_signal_dbm:     s?.signal_dbm ?? null,
         mqtt_connected:      juicebox.isConnected(),
         state_data_received: s !== null,
       }, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "get_wifi_info",
+    "Returns the JuiceBox's current WiFi network (SSID), MAC address, IP address, gateway, " +
+    "DNS, connection status, and UDPC target (the host JuicePassProxy intercepts). " +
+    "Reads directly from the ZentriOS firmware API on port 80.",
+    {},
+    async () => {
+      const info = await zentrios.getWifiInfo();
+      return { content: [{ type: "text", text: JSON.stringify({
+        ssid:             info["wlan.ssid"],
+        mac:              info["wlan.mac"],
+        bssid:            info["wlan.bssid"],
+        security:         info["wlan.security"],
+        dhcp_enabled:     info["wlan.dhcp.enabled"],
+        ip:               info["wlan.network.ip"],
+        gateway:          info["wlan.network.gateway"],
+        dns:              info["wlan.network.dns"],
+        netmask:          info["wlan.network.netmask"],
+        connection_status: info["wlan.network.status"],
+        join_result:      info["wlan.join.result"],
+        udpc_host:        info["udp.client.remote_host"],
+        udpc_port:        info["udp.client.remote_port"],
+      }, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "set_wifi_network",
+    "Changes the WiFi network the JuiceBox connects to. Saves to flash and reboots the charger. " +
+    "The charger will be offline for ~30 seconds while it reboots and joins the new network. " +
+    "WARNING: if the new credentials are wrong the charger will lose connectivity — " +
+    "you will need physical access to reset it.",
+    {
+      ssid:    z.string().min(1).max(32).describe("WiFi network name (SSID)"),
+      passkey: z.string().min(8).max(63).describe("WiFi password (WPA2, 8–63 characters)"),
+    },
+    async ({ ssid, passkey }) => {
+      await zentrios.setVar("wlan.ssid", ssid);
+      await zentrios.setVar("wlan.passkey", passkey);
+      await zentrios.save();
+      await zentrios.reboot();
+      return { content: [{ type: "text", text: JSON.stringify({
+        success: true,
+        message: `WiFi changed to "${ssid}". Charger is rebooting — will be offline ~30s.`,
+        ssid,
+      }, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "wifi_scan",
+    "Scans for nearby WiFi networks visible to the JuiceBox. " +
+    "Returns raw ZentriOS scan output with SSIDs, signal strength, and security type.",
+    {},
+    async () => {
+      const result = await zentrios.wifiScan();
+      return { content: [{ type: "text", text: result }] };
+    }
+  );
+
+  server.tool(
+    "reboot_charger",
+    "Reboots the JuiceBox firmware (ZentriOS). " +
+    "The charger will be offline for ~30 seconds. Use after changing network settings " +
+    "or if the charger appears stuck.",
+    {},
+    async () => {
+      await zentrios.reboot();
+      return { content: [{ type: "text", text: JSON.stringify({
+        success: true,
+        message: "Reboot command sent. Charger will be offline ~30 seconds.",
+      }) }] };
     }
   );
 

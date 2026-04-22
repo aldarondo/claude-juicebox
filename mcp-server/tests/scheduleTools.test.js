@@ -50,6 +50,38 @@ vi.mock("../juiceboxClient.js", () => ({
   setCurrentLimit: vi.fn(),
 }));
 
+vi.mock("../zentriosClient.js", () => ({
+  runCommand:    vi.fn(async () => ""),
+  getVar:        vi.fn(async () => ""),
+  setVar:        vi.fn(async () => ""),
+  save:          vi.fn(async () => ""),
+  reboot:        vi.fn(async () => {}),
+  getWifiInfo:   vi.fn(async () => ({
+    "wlan.ssid":             null,
+    "wlan.mac":              null,
+    "wlan.bssid":            null,
+    "wlan.security":         null,
+    "wlan.dhcp.enabled":     null,
+    "wlan.network.ip":       null,
+    "wlan.network.gateway":  null,
+    "wlan.network.dns":      null,
+    "wlan.network.netmask":  null,
+    "wlan.network.status":   null,
+    "wlan.join.result":      null,
+    "udp.client.remote_host": null,
+    "udp.client.remote_port": null,
+  })),
+  getSystemInfo: vi.fn(async () => ({
+    "system.version":      null,
+    "system.uuid":         null,
+    "system.build_number": null,
+    "system.memory.usage": null,
+    "time.uptime":         null,
+  })),
+  wifiScan:      vi.fn(async () => ""),
+  getRssi:       vi.fn(async () => null),
+}));
+
 vi.mock("@modelcontextprotocol/sdk/server/mcp.js", async (importOriginal) => {
   const real = await importOriginal();
   const RealMcpServer = real.McpServer;

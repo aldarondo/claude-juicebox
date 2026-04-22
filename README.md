@@ -34,6 +34,63 @@ The JuiceBox also maintains an HTTPS connection to `device-backend-evos.juice.ne
 
 ---
 
+## MCP Tools
+
+All tools are exposed over SSE at `http://<YOUR-NAS-IP>:3001/sse`.
+
+### Charging control (via MQTT → JuicePassProxy)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_charger_status` | — | Charging state, power (W), current (A), voltage (V), temperature (°F), WiFi signal (dBm), MQTT status |
+| `get_session_info` | — | Session energy (kWh), elapsed time (min), session start time |
+| `start_charging` | `max_amps` (6–40, default 32) | Enable charging immediately |
+| `stop_charging` | — | Stop / pause charging |
+| `set_current_limit` | `amps` (6–40) | Throttle current during an active session |
+| `get_charging_schedule` | — | Return the currently programmed weekly schedule |
+| `set_charging_schedule` | `schedule[]` (days, start, end, max_amps) | Program a weekly charging schedule; pass `[]` to clear |
+
+### WiFi & network (via ZentriOS HTTP API on port 80)
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_wifi_info` | — | SSID, MAC, IP, gateway, DNS, netmask, connection status, UDPC target host/port |
+| `set_wifi_network` | `ssid`, `passkey` | Change WiFi network — saves to flash and reboots the charger (~30s offline) |
+| `wifi_scan` | — | Scan for nearby networks (SSIDs, RSSI, security type) |
+| `reboot_charger` | — | Reboot the ZentriOS firmware (~30s offline) |
+
+### Diagnostics & logs
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `get_diagnostics` | — | Firmware version, UUID, uptime, memory usage, RSSI, MQTT status |
+| `get_logs` | `lines` (1–2000, default 200) | Recent MCP server log entries from the persistent log file |
+
+### ZentriOS HTTP API (direct)
+
+The charger's ZentriOS firmware exposes a REST API at `http://192.168.0.2/command/<cmd>`.
+Response format: `{"id":N,"code":0,"flags":0,"response":"..."}` — code 0 = success.
+
+Examples:
+```
+GET /command/get%20wlan.ssid          → {"response":"aldarondo_EXT\r\n"}
+GET /command/get%20wlan.network.ip    → current IP address
+GET /command/wlan_scan                → nearby WiFi networks
+GET /command/version                  → firmware version string
+GET /command/help%20variables         → full list of readable/writable variables
+GET /command/help%20commands          → full list of available commands
+```
+
+To change WiFi via the HTTP API directly (without using the MCP tool):
+```
+GET /command/set%20wlan.ssid%20<new-ssid>
+GET /command/set%20wlan.passkey%20<new-passkey>
+GET /command/save
+GET /command/reboot
+```
+
+---
+
 ## Protocol deep-dive
 
 ### How the JuiceBox sends data

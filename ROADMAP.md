@@ -18,7 +18,7 @@
 
 ## ✅ Completed
 
-- **Fix `stop_charging` — root cause: `IGNORE_ENELX` not set (2026-04-22)** — JPP's `send_cmd_message_to_juicebox()` is gated on `ignore_enelx=True`; without it the function logs a warning and never sends the UDP packet. MQTT state updated to 0.0 (echoed) but hardware never received the command. Fix: added `IGNORE_ENELX=true` to JPP service in `docker-compose.yml`. Enel X cloud is shut down so ignoring it is correct. Needs deployment + live charge test to confirm JuiceBox responds.
+- **Fix `stop_charging` — confirmed working on live session (2026-04-22)** — Root cause was two missing config items: (1) `IGNORE_ENELX=true` not set in `docker-compose.yml` (JPP gated on this before sending any UDP); (2) `Max-Current-Offline-Wanted` uninitialized on fresh JPP start ("Must have both current_max defined" error). Fix: `IGNORE_ENELX=true` added to compose; `stopCharging()` and `startCharging()` now always publish offline limit first. Live test confirmed: JuiceBox transitioned Charging→Plugged In, Current dropped to 0A within ~3s of command.
 
 - **Deploy pipeline hardened against zombie containers and duplicate networks (2026-04-21)** — Fixed workflow file with merge conflict markers (broke since fedb63b), then resolved `juicepassproxy` container-stopped blocker by refactoring deploy step to use `compose stop/rm` + full-path docker network cleanup before `up -d`; all four services now deploy cleanly.
 

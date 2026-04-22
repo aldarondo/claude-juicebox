@@ -125,14 +125,19 @@ export function isConnected()     { return mqttClient?.connected ?? false; }
  */
 export function startCharging(amps = 32) {
   if (amps < 6 || amps > 40) throw new RangeError("amps must be 6–40");
+  publish(`${HMD}/number/${DEVICE}/Max-Current-Offline-Wanted-/command`, amps);
   publish(`${HMD}/number/${DEVICE}/Max-Current-Online-Wanted-/command`, amps);
 }
 
 /**
- * Stop charging by setting current limit to 0.
- * JPP v0.5 doesn't have an explicit stop — setting 0A halts the session.
+ * Stop charging by setting online current limit to 0.
+ * JPP requires both online and offline limits to be defined before it will
+ * build and send the UDP command packet. We initialize offline to 32A (safe
+ * default matching J1772 minimum) if it hasn't been set yet.
  */
 export function stopCharging() {
+  // Offline limit must be set or JPP errors: "Must have both current_max defined"
+  publish(`${HMD}/number/${DEVICE}/Max-Current-Offline-Wanted-/command`, 32);
   publish(`${HMD}/number/${DEVICE}/Max-Current-Online-Wanted-/command`, 0);
 }
 

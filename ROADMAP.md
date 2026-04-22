@@ -11,14 +11,14 @@
 
 ### 📋 Backlog
 
-- **Fix `stop_charging` — JuiceBox firmware ignores 0A command from JuicePassProxy** — Confirmed 2026-04-22: MQTT `Max-Current-Online-Wanted-/state` updates to 0.0 (JPP receives the command) but `Current` stays at ~31.6A and `Max-Current-Online-Device-` stays at 40 — the JuiceBox hardware never acts on it. Need to determine whether JPP's `send_cmd_message_to_juicebox()` is actually delivering the UDP command to the JuiceBox, or whether firmware EMWERK-JB_1_1-1.4.0.28 requires a different mechanism (e.g. dedicated pause/stop packet vs. a 0A current-limit packet). Until fixed, `stop_charging` is a no-op while the car is actively charging.
-
-- **Fix `set_charging_schedule` — does not stop an active charging session** — When a new schedule is pushed that doesn't cover the current time, the JuiceBox continues the in-progress session until the schedule's next stop cron fires. `set_charging_schedule` should call `stopCharging()` immediately after clearing the old schedule if the current time falls outside all windows in the new schedule. Blocked on `stop_charging` actually working (see above).
+- **Fix `set_charging_schedule` — does not stop an active charging session** — When a new schedule is pushed that doesn't cover the current time, the JuiceBox continues the in-progress session until the schedule's next stop cron fires. `set_charging_schedule` should call `stopCharging()` immediately after clearing the old schedule if the current time falls outside all windows in the new schedule. Unblocked now that `stop_charging` fix is deployed — needs testing.
 
 ### 🔴 Blocked
 [Empty]
 
 ## ✅ Completed
+
+- **Fix `stop_charging` — root cause: `IGNORE_ENELX` not set (2026-04-22)** — JPP's `send_cmd_message_to_juicebox()` is gated on `ignore_enelx=True`; without it the function logs a warning and never sends the UDP packet. MQTT state updated to 0.0 (echoed) but hardware never received the command. Fix: added `IGNORE_ENELX=true` to JPP service in `docker-compose.yml`. Enel X cloud is shut down so ignoring it is correct. Needs deployment + live charge test to confirm JuiceBox responds.
 
 - **Deploy pipeline hardened against zombie containers and duplicate networks (2026-04-21)** — Fixed workflow file with merge conflict markers (broke since fedb63b), then resolved `juicepassproxy` container-stopped blocker by refactoring deploy step to use `compose stop/rm` + full-path docker network cleanup before `up -d`; all four services now deploy cleanly.
 

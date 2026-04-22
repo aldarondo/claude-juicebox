@@ -47,6 +47,9 @@ services:
       - MQTT_PASS=${MQTT_PASS:-}
       - ENELX_SERVER_HOST=${ENELX_SERVER_HOST:-device-backend-udp-evos.juice.net}  # actual Enel X UDP hostname for this charger
       - ENELX_SERVER_PORT=${ENELX_SERVER_PORT:-8042}   # actual Enel X UDP port
+      # Cloud is shut down — ignore Enel X so JPP actually sends UDP commands to the JuiceBox.
+      # Without this, send_cmd_message_to_juicebox() logs a warning and is a no-op.
+      - IGNORE_ENELX=${IGNORE_ENELX:-true}
       - MITM_RECV_TIMEOUT=${MITM_RECV_TIMEOUT:-600}    # upstream default 120s causes restarts every ~3.3 hrs at idle; 600s = ~10 min
     restart: unless-stopped
     depends_on:

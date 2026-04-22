@@ -37,11 +37,11 @@ jobs:
           CF_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
-          # Copy updated docker-compose.yml to NAS
-          scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
+          # Copy updated docker-compose.yml to NAS (avoid SFTP subsystem, use stdin pipe)
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
             -o "ProxyCommand=cloudflared access ssh --hostname nas-ssh.aldarondo.family --id $CF_CLIENT_ID --secret $CF_CLIENT_SECRET" \
-            docker-compose.yml \
-            charles@nas-ssh.aldarondo.family:/volume1/docker/claude-juicebox/docker-compose.yml
+            charles@nas-ssh.aldarondo.family \
+            "cat > /volume1/docker/claude-juicebox/docker-compose.yml" < docker-compose.yml
 
           # Restart stack with updated config
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \

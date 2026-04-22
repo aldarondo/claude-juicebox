@@ -39,6 +39,7 @@ cp .env.example .env
 | `MQTT_BROKER` | `mqtt://localhost:1883` | MQTT broker URL |
 | `MQTT_USER` | _(none)_ | MQTT username (if broker requires auth) |
 | `MQTT_PASS` | _(none)_ | MQTT password (if broker requires auth) |
+| `LOG_FILE` | `/logs/mcp.log` | Path to the persistent log file (override for local dev) |
 
 To watch all MQTT topics published by JuicePassProxy:
 
@@ -209,6 +210,7 @@ Run diagnostics on the JuiceBox.
 | `stop_charging` | Stops / pauses charging immediately |
 | `set_current_limit` | Adjusts maximum charging current mid-session (6–40 A) without stopping the session |
 | `get_diagnostics` | Returns firmware version, WiFi signal strength (dBm), and MQTT connection status |
+| `get_logs` | Returns recent log entries from the persistent log file (default 200 lines, max 2000); survives container replacement |
 | `get_charging_schedule` | Returns the currently programmed weekly charging schedule |
 | `set_charging_schedule` | Programs a weekly schedule of charging windows (days + start/end time + max amps); pass an empty array to clear all scheduled charging |
 
@@ -238,6 +240,18 @@ Run diagnostics on the JuiceBox.
 ```
 
 Times are in 24-hour format, `America/Phoenix` timezone. Calling `set_charging_schedule` replaces the entire previous schedule atomically.
+
+---
+
+## Logging
+
+All `console.log` and `console.error` output is written to both stdout and a persistent log file at `/logs/mcp.log` inside the container. The `mcp-logs` named Docker volume backs this path, so logs survive container replacement on redeploy.
+
+- **Rotation:** when `mcp.log` exceeds 500 KB it is renamed to `mcp.log.1` and a fresh file begins.
+- **Format:** `[ISO-8601 timestamp] INFO|ERROR  <message>`
+- **Override path:** set `LOG_FILE` env var to change the log file path (useful for local dev).
+- **Access via MCP:** call `get_logs` (optionally passing `lines: N`) to retrieve recent entries without shelling into the container.
+- **Access via shell:** `docker exec juicebox-mcp tail -f /logs/mcp.log`
 
 ---
 

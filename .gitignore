@@ -33,3 +33,6 @@ desktop.ini
 
 # Logs
 *.log
+.vite/
+.githooks/
+QA_REPORT.md

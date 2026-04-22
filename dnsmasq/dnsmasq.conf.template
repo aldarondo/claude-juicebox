@@ -1,0 +1,72 @@
+# ─── JuiceBox DNS Override ──────────────────────────────────────────────────
+#
+# This dnsmasq instance is the DNS server for the JuiceBox charger only.
+# The charger is configured with a static network config that points
+# its DNS to this NAS (@@LOCAL_IP@@). Nothing else on the network is
+# affected — the Cox router and all other devices use their own DNS.
+#
+# Why this exists:
+#   The JuiceBox uses Enel X's cloud (device-backend-udp-evos.juice.net:8042)
+#   as its UDPC (UDP Client) endpoint. By resolving that hostname to our NAS,
+#   we intercept the UDP data stream without needing to modify the charger's
+#   UDPC setting on every reboot.
+#
+# The NAS itself (and all Docker containers) use their own upstream DNS
+# (the Cox gateway), so JuicePassProxy's forward path to the real Enel X
+#  server is unaffected.
+#
+# Variables substituted from .env at container start:
+#   @@LOCAL_IP@@     — NAS LAN IP (LOCAL_IP in .env)
+#   @@JUICEBOX_IP@@  — JuiceBox assigned IP (JUICEBOX_IP in .env)
+#   @@GATEWAY_IP@@   — LAN gateway / router IP (GATEWAY_IP in .env)
+
+# ─── Upstream DNS ───────────────────────────────────────────────────────────
+server=8.8.8.8
+server=8.8.4.4
+
+# ─── Local overrides ────────────────────────────────────────────────────────
+# Redirect the Enel X UDP server hostname to this NAS so that JuicePassProxy
+# intercepts charger telemetry instead of it going straight to the cloud.
+address=/device-backend-udp-evos.juice.net/@@LOCAL_IP@@
+
+# ─── DHCP for JuiceBox only ──────────────────────────────────────────────────
+#
+# dnsmasq handles DHCP exclusively for the JuiceBox charger.
+# All other devices continue to get DHCP from the Cox router.
+#
+# IMPORTANT — two MACs:
+#   Hardware / ZentriOS MAC : 4C:55:CC:14:50:E8  (seen in telnet `get network.mac`)
+#   Wi-Fi / DHCP MAC        : 52:D4:F7:14:50:E8  ← this is what the charger sends in DHCP
+#   dhcp-host MUST use the Wi-Fi MAC (52:...) or dnsmasq will never match the request.
+#
+# Prerequisites:
+#   1. Cox DHCP start address changed from .2 to .3 — removes .2 from Cox's pool.
+#      juicebox-dns container must run with network_mode: host (see docker-compose.yml)
+#      so it can receive DHCP broadcasts (255.255.255.255:67).
+#
+# How this wins the DHCP race:
+#   1. JuiceBox boots with dhcp.enabled=1, sends broadcast DHCPREQUEST for .197
+#   2. dnsmasq (authoritative) sends DHCPNAK — it wants to assign .2, not .197
+#   3. JuiceBox discards stored lease, sends fresh DHCPDISCOVER
+#   4. dnsmasq offers .2; Cox offers .197 (range .142-.253 means Cox starts at .142)
+#      Cox cannot offer .2 (outside its range), so even if Cox wins the offer race,
+#      JuiceBox sends DHCPREQUEST for the IP it received.
+#      If JuiceBox picks dnsmasq's offer (.2): gets DNS @@LOCAL_IP@@ ✓
+#      If JuiceBox picks Cox's offer (.197+): dnsmasq sends another DHCPNAK (not .2)
+#      → repeat until JuiceBox accepts .2 from dnsmasq
+#
+# Verify: sudo docker logs juicebox-dns 2>&1 | grep -i dhcp
+# Expected: DHCPACK(eth0) @@JUICEBOX_IP@@ 52:d4:f7:14:50:e8 JuiceBox-0E8
+
+dhcp-range=@@JUICEBOX_IP@@,@@JUICEBOX_IP@@,12h
+dhcp-host=52:d4:f7:14:50:e8,JuiceBox-0E8,@@JUICEBOX_IP@@,12h
+dhcp-option=3,@@GATEWAY_IP@@    # default gateway
+dhcp-option=6,@@LOCAL_IP@@      # DNS server → our dnsmasq
+dhcp-authoritative              # respond immediately, don't defer to other servers
+dhcp-ignore=tag:!known          # silently ignore DHCP requests from unknown MACs
+
+# ─── Housekeeping ────────────────────────────────────────────────────────────
+no-hosts          # ignore /etc/hosts inside the container
+no-resolv         # ignore /etc/resolv.conf inside the container (use server= above)
+log-queries       # log DNS queries — useful for debugging charger DNS activity
+log-dhcp          # log DHCP transactions — useful for verifying JuiceBox gets correct lease

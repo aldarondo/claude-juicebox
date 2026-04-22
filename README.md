@@ -161,7 +161,17 @@ Cox Panoramic's Local IP Configuration page does not expose a DNS server field i
 - Synology NAS at `<YOUR-NAS-IP>` with Docker / Container Manager
 - JuiceBox at `<YOUR-JUICEBOX-IP>` on the same LAN
 - Port `53` (DNS), `67` (DHCP), `1883` (MQTT), `3001` (MCP), `8042` (JPP) free on the NAS
-- SSH access + a GitHub deploy key (see `claude-synology` skill for setup)
+- SSH access to the NAS
+- GitHub Actions secrets configured (see below)
+
+### Required GitHub Actions secrets
+
+| Secret | Purpose |
+|--------|---------|
+| `NAS_SSH_KEY` | Private key for SSH auth to the NAS (key-based, not password). Add the corresponding public key to `~/.ssh/authorized_keys` on the NAS. |
+| `NAS_SSH_PASSWORD` | NAS user password — used only for `sudo` in deploy commands, not for SSH connection auth. |
+| `CF_ACCESS_CLIENT_ID` | Cloudflare Access service token ID (for SSH via CF tunnel). |
+| `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access service token secret. |
 
 ### Deploy to NAS
 

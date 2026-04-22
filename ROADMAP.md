@@ -17,6 +17,15 @@
 
 ## ✅ Completed
 
+- **QA hardening pass — 18 findings fixed across security, code quality, tests, and config (2026-04-22)**
+  - *Security (Critical):* GitHub Actions SSH auth migrated from password (`sshpass`) to key-based auth (`NAS_SSH_KEY` secret + `~/.ssh/id_ed25519`); deploy key generated and authorized on NAS
+  - *Security (Major):* `StrictHostKeyChecking=no` → `StrictHostKeyChecking=accept-new` in all 3 CI workflows
+  - *Tests:* 5 error-path tests added (get_charger_status/get_session_info/get_diagnostics when state is null or MQTT offline); 39 tests total, all passing
+  - *Code quality:* `constants.js` module extracted (`STATUS`, `MQTT_CMD`); `structuredClone()` in `getState()`; `TZ_OVERRIDE` env var for schedule timezone; schedule time range validation (hours < 24, minutes < 60); cron jobs track consecutive failures with warning at 3+
+  - *Docker:* `juicebox-mcp` healthcheck added; image tags parameterized (`${MCP_IMAGE_TAG:-latest}`, `${JPP_IMAGE_TAG:-latest}`)
+  - *Config:* `dnsmasq.conf` replaced with `dnsmasq.conf.template` — `LOCAL_IP`, `JUICEBOX_IP`, `GATEWAY_IP` now read from `.env` via `sed` substitution at container start; NAS `.env` and template deployed
+  - *Docs:* Integration testing section added to README; GitHub Actions secrets table added; stale `MQTT_STATE_TOPIC`/`MQTT_CMD_TOPIC` references removed throughout
+
 - **Live tests passed — all 5 MCP tools verified with car connected (2026-04-22)** — `stop_charging` ✅ (Charging→Plugged In, 0A in ~3s), `start_charging` ✅ (Plugged In→Charging, 31.7A / 7.7kW), `set_current_limit` ✅ (throttled 31.7A→15.8A at 16A limit, restored to 31.6A on 32A restore), `get_session_info` ✅ (charging=true, 1.26kWh, session_start tracked correctly, elapsed_minutes accurate), `set_charging_schedule` ✅ (cron jobs created, schedule cleared). `stopped_immediately` live test deferred until new image deploys (code staged, CI will build).
 
 - **Fix `set_charging_schedule` — immediate stop on schedule push (2026-04-22)** — Extracted `isTimeInSchedule()` to `scheduleUtils.js`; `set_charging_schedule` now calls `stopCharging()` immediately when current time falls outside all windows in new schedule. `stopped_immediately` field added to response. 34 unit tests passing (18 schedule + 16 juiceboxClient).

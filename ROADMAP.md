@@ -10,13 +10,18 @@
 [Empty]
 
 ### 📋 Backlog
-
-- **Fix `set_charging_schedule` — does not stop an active charging session** — When a new schedule is pushed that doesn't cover the current time, the JuiceBox continues the in-progress session until the schedule's next stop cron fires. `set_charging_schedule` should call `stopCharging()` immediately after clearing the old schedule if the current time falls outside all windows in the new schedule. Unblocked now that `stop_charging` fix is deployed — needs testing.
+[Empty]
 
 ### 🔴 Blocked
 [Empty]
 
 ## ✅ Completed
+
+- **Live tests passed — all 5 MCP tools verified with car connected (2026-04-22)** — `stop_charging` ✅ (Charging→Plugged In, 0A in ~3s), `start_charging` ✅ (Plugged In→Charging, 31.7A / 7.7kW), `set_current_limit` ✅ (throttled 31.7A→15.8A at 16A limit, restored to 31.6A on 32A restore), `get_session_info` ✅ (charging=true, 1.26kWh, session_start tracked correctly, elapsed_minutes accurate), `set_charging_schedule` ✅ (cron jobs created, schedule cleared). `stopped_immediately` live test deferred until new image deploys (code staged, CI will build).
+
+- **Fix `set_charging_schedule` — immediate stop on schedule push (2026-04-22)** — Extracted `isTimeInSchedule()` to `scheduleUtils.js`; `set_charging_schedule` now calls `stopCharging()` immediately when current time falls outside all windows in new schedule. `stopped_immediately` field added to response. 34 unit tests passing (18 schedule + 16 juiceboxClient).
+
+- **Fix `set_current_limit` — publish offline limit alongside online (2026-04-22)** — `setCurrentLimit()` now publishes `Max-Current-Offline-Wanted` before `Max-Current-Online-Wanted`, matching same pattern as `startCharging`. JPP requires both defined.
 
 - **Fix `stop_charging` — confirmed working on live session (2026-04-22)** — Root cause was two missing config items: (1) `IGNORE_ENELX=true` not set in `docker-compose.yml` (JPP gated on this before sending any UDP); (2) `Max-Current-Offline-Wanted` uninitialized on fresh JPP start ("Must have both current_max defined" error). Fix: `IGNORE_ENELX=true` added to compose; `stopCharging()` and `startCharging()` now always publish offline limit first. Live test confirmed: JuiceBox transitioned Charging→Plugged In, Current dropped to 0A within ~3s of command.
 

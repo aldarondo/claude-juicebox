@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll } from "vitest";
+import { isTimeInSchedule } from "../scheduleUtils.js";
 
 // ---------------------------------------------------------------------------
 // Module-level state shared between mock factories and tests
@@ -62,11 +63,14 @@ vi.mock("@modelcontextprotocol/sdk/server/mcp.js", async (importOriginal) => {
 });
 
 // ---------------------------------------------------------------------------
-// Import server.js ONCE for this entire test file (as a side effect).
-// Because vi.mock() is hoisted, the mocks above are active before this import.
+// Import server.js and call createMcpServer() to trigger the capture.
+// createMcpServer() calls new McpServer(), which sets _capturedServer via the
+// CapturingMcpServer constructor above. Must be called explicitly because
+// createMcpServer() only runs inside the SSE handler in production.
 // ---------------------------------------------------------------------------
 
-await import("../server.js");
+const { createMcpServer } = await import("../server.js");
+createMcpServer();
 
 // ---------------------------------------------------------------------------
 // Helper: invoke a registered MCP tool handler by name
@@ -190,6 +194,89 @@ describe("set_charging_schedule", () => {
     const schedResult = await callTool("get_charging_schedule", {});
     const schedBody = JSON.parse(schedResult.content[0].text);
     expect(schedBody.job_count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isTimeInSchedule unit tests
+// ---------------------------------------------------------------------------
+
+// Phoenix is UTC-7 (no DST). We use a fixed UTC timestamp so that
+// toLocaleString("en-US", { timeZone: "America/Phoenix" }) gives predictable output.
+// 2026-04-22T15:00:00Z === 2026-04-22 08:00 Wed America/Phoenix
+const WED_0800_UTC = new Date("2026-04-22T15:00:00Z"); // 08:00 Wed Phoenix
+const WED_2300_UTC = new Date("2026-04-23T06:00:00Z"); // 23:00 Wed Phoenix
+const THU_0200_UTC = new Date("2026-04-23T09:00:00Z"); // 02:00 Thu Phoenix
+
+describe("isTimeInSchedule", () => {
+  it("returns false for empty schedule", () => {
+    expect(isTimeInSchedule([], WED_0800_UTC)).toBe(false);
+  });
+
+  it("returns true when current time is inside a same-day window", () => {
+    const schedule = [{ days: ["wed"], start: "07:00", end: "10:00", max_amps: 32 }];
+    expect(isTimeInSchedule(schedule, WED_0800_UTC)).toBe(true);
+  });
+
+  it("returns false when current time is outside all windows", () => {
+    const schedule = [{ days: ["wed"], start: "22:00", end: "06:00", max_amps: 32 }];
+    expect(isTimeInSchedule(schedule, WED_0800_UTC)).toBe(false);
+  });
+
+  it("returns false when day does not match", () => {
+    const schedule = [{ days: ["mon", "tue", "thu"], start: "07:00", end: "10:00", max_amps: 32 }];
+    expect(isTimeInSchedule(schedule, WED_0800_UTC)).toBe(false);
+  });
+
+  it("returns true for overnight window — after start on named day", () => {
+    // 23:00 Wed, window is 22:00–06:00 on Wed
+    const schedule = [{ days: ["wed"], start: "22:00", end: "06:00", max_amps: 32 }];
+    expect(isTimeInSchedule(schedule, WED_2300_UTC)).toBe(true);
+  });
+
+  it("returns true for overnight window — before end on next day", () => {
+    // 02:00 Thu, overnight window started Wed, ends at 06:00 Thu
+    const schedule = [{ days: ["thu"], start: "22:00", end: "06:00", max_amps: 32 }];
+    expect(isTimeInSchedule(schedule, THU_0200_UTC)).toBe(true);
+  });
+
+  it("returns true when current time matches one of multiple windows", () => {
+    const schedule = [
+      { days: ["mon", "tue"], start: "22:00", end: "06:00", max_amps: 32 },
+      { days: ["wed"], start: "07:30", end: "09:00", max_amps: 24 },
+    ];
+    expect(isTimeInSchedule(schedule, WED_0800_UTC)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// set_charging_schedule — immediate stop behaviour
+// ---------------------------------------------------------------------------
+
+describe("set_charging_schedule — immediate stop on schedule push", () => {
+  it("stopped_immediately=false when all-day window covers current time", async () => {
+    // 00:00–23:59 on all days covers every possible current time
+    const result = await callTool("set_charging_schedule", {
+      schedule: [{ days: ["sun","mon","tue","wed","thu","fri","sat"], start: "00:00", end: "23:59", max_amps: 32 }],
+    });
+    const body = JSON.parse(result.content[0].text);
+    expect(body.stopped_immediately).toBe(false);
+  });
+
+  it("stopped_immediately=true when schedule is cleared (empty array)", async () => {
+    const result = await callTool("set_charging_schedule", { schedule: [] });
+    const body = JSON.parse(result.content[0].text);
+    expect(body.stopped_immediately).toBe(true);
+    expect(body.jobs).toBe(0);
+  });
+
+  it("stopped_immediately is present in non-empty schedule response", async () => {
+    const result = await callTool("set_charging_schedule", {
+      schedule: [{ days: ["mon"], start: "22:00", end: "06:00", max_amps: 32 }],
+    });
+    const body = JSON.parse(result.content[0].text);
+    expect(body).toHaveProperty("stopped_immediately");
+    expect(typeof body.stopped_immediately).toBe("boolean");
   });
 });
 

@@ -20,6 +20,7 @@ import { McpServer }        from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import * as juicebox from "./juiceboxClient.js";
+import { isTimeInSchedule } from "./scheduleUtils.js";
 
 const PORT = process.env.PORT || 3001;
 
@@ -46,12 +47,13 @@ function clearSchedule() {
   activeSchedule = [];
 }
 
+
 // ---------------------------------------------------------------------------
 // Factory: create a new McpServer instance per connection (SDK 1.9+ requires
 // each transport to have its own server instance).
 // ---------------------------------------------------------------------------
 
-function createMcpServer() {
+export function createMcpServer() {
   const server = new McpServer({ name: "juicebox", version: "1.0.0" });
 
   server.tool(
@@ -185,10 +187,19 @@ function createMcpServer() {
     async ({ schedule }) => {
       clearSchedule();
 
+      // If current time is outside all windows in the new schedule, stop any
+      // in-progress session immediately rather than waiting for the next cron.
+      const stoppedImmediately = !isTimeInSchedule(schedule);
+      if (stoppedImmediately) {
+        try { juicebox.stopCharging(); }
+        catch (e) { console.error(`[schedule] Failed to stop charging on schedule update: ${e.message}`); }
+      }
+
       if (schedule.length === 0) {
         return { content: [{ type: "text", text: JSON.stringify({
           success: true,
           message: "Schedule cleared — no scheduled charging active.",
+          stopped_immediately: stoppedImmediately,
           jobs: 0,
         }) }] };
       }
@@ -225,9 +236,10 @@ function createMcpServer() {
       }
 
       return { content: [{ type: "text", text: JSON.stringify({
-        success:           true,
-        windows_scheduled: schedule.length,
-        cron_jobs_created: scheduleJobs.length,
+        success:             true,
+        windows_scheduled:   schedule.length,
+        cron_jobs_created:   scheduleJobs.length,
+        stopped_immediately: stoppedImmediately,
         schedule,
       }, null, 2) }] };
     }

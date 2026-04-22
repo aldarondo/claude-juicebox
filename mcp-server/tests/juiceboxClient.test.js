@@ -1,16 +1,21 @@
 /**
- * Unit tests for juiceboxClient.js
+ * Unit tests for juiceboxClient.js (JuicePassProxy v0.5.x topic format)
  *
- * The mqtt package is fully mocked so no real broker is needed.
+ * Messages arrive as individual MQTT topics:
+ *   hmd/sensor/JuiceBox/<Field>/state  → string value
+ *   hmd/number/JuiceBox/<Field>/state  → string number
+ *
+ * Commands are published as:
+ *   hmd/number/JuiceBox/Max-Current-Online-Wanted-/command  → string amps
+ *   hmd/number/JuiceBox/Max-Current-Offline-Wanted-/command → string amps
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mock the mqtt package before importing the module under test
+// Mock the mqtt package
 // ---------------------------------------------------------------------------
 
-// Shared mock client instance — tests can access it via getMockClient()
 let _mockClient;
 
 function makeMockClient() {
@@ -24,14 +29,13 @@ function makeMockClient() {
       return client;
     },
 
-    subscribe(_topic, _opts, cb) {
+    subscribe: vi.fn((_topic, _opts, cb) => {
       if (cb) cb(null);
       return client;
-    },
+    }),
 
     publish: vi.fn(),
 
-    // Test helper: simulate receiving a message
     _emit(event, ...args) {
       if (handlers[event]) handlers[event](...args);
     },
@@ -49,15 +53,11 @@ vi.mock("mqtt", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Import module under test (after mock registration)
+// Fresh module per test (connect() sets module-level state)
 // ---------------------------------------------------------------------------
-
-// We need a fresh module for each describe block that calls connect(), so we
-// use dynamic imports with cache-busting via vi.resetModules().
 
 async function freshClient() {
   vi.resetModules();
-  // Re-register mock after resetModules
   vi.mock("mqtt", () => ({
     default: {
       connect: vi.fn(() => {
@@ -66,8 +66,12 @@ async function freshClient() {
       }),
     },
   }));
-  const mod = await import("../juiceboxClient.js");
-  return mod;
+  return import("../juiceboxClient.js");
+}
+
+// Helper: emit a single per-topic state message
+function emitState(topic, value) {
+  _mockClient._emit("message", topic, Buffer.from(String(value)));
 }
 
 // ---------------------------------------------------------------------------
@@ -81,130 +85,93 @@ describe("juiceboxClient", () => {
     client = await freshClient();
   });
 
-  // -------------------------------------------------------------------------
-  it("connect() subscribes to the state topic", async () => {
+  it("connect() subscribes to hmd/#", () => {
     client.connect();
-    const subscribeSpy = vi.spyOn(_mockClient, "subscribe");
-    // Trigger the "connect" event on the mock client
     _mockClient._emit("connect");
-    expect(subscribeSpy).toHaveBeenCalledWith(
-      expect.stringContaining("state"),
+    expect(_mockClient.subscribe).toHaveBeenCalledWith(
+      "hmd/#",
       expect.objectContaining({ qos: 1 }),
       expect.any(Function)
     );
   });
 
-  // -------------------------------------------------------------------------
   it("getState() returns null before any message is received", () => {
     client.connect();
     expect(client.getState()).toBeNull();
   });
 
-  // -------------------------------------------------------------------------
-  it("normalises state when a message arrives", () => {
+  it("normalises state from per-topic messages", () => {
     client.connect();
     _mockClient._emit("connect");
 
-    const raw = {
-      state: "charging",
-      amps: 24,
-      voltage: 240,
-      watts: 5760,
-      watt_hours_session: 1200,
-      temperature: 35,
-      signal: -65,
-      firmware_version: "1.2.3",
-    };
-    _mockClient._emit("message", "juicebox/JuiceBox-0E8/state", Buffer.from(JSON.stringify(raw)));
+    emitState("hmd/sensor/JuiceBox/Status/state",          "Charging");
+    emitState("hmd/sensor/JuiceBox/Current/state",         "31.5");
+    emitState("hmd/sensor/JuiceBox/Voltage/state",         "241.8");
+    emitState("hmd/sensor/JuiceBox/Power/state",           "7614");
+    emitState("hmd/sensor/JuiceBox/Temperature/state",     "120.2");
+    emitState("hmd/sensor/JuiceBox/Energy--Session-/state","6592");
+    emitState("hmd/sensor/JuiceBox/Frequency/state",       "60.01");
 
     const s = client.getState();
     expect(s).not.toBeNull();
-    expect(s.state).toBe("charging");
-    expect(s.current_a).toBe(24);
-    expect(s.voltage_v).toBe(240);
-    expect(s.power_w).toBe(5760);
-    expect(s.session_energy_wh).toBe(1200);
-    expect(s.temperature_c).toBe(35);
-    expect(s.signal_dbm).toBe(-65);
-    expect(s.firmware_version).toBe("1.2.3");
+    expect(s.status).toBe("Charging");
+    expect(s.current_a).toBe(31.5);
+    expect(s.voltage_v).toBe(241.8);
+    expect(s.power_w).toBe(7614);
+    expect(s.temperature_f).toBe(120.2);
+    expect(s.session_energy_wh).toBe(6592);
+    expect(s.frequency_hz).toBe(60.01);
   });
 
-  // -------------------------------------------------------------------------
-  it("handles field aliases: amps→current_a, watts→power_w", () => {
+  it("ignores unrecognised topics", () => {
     client.connect();
     _mockClient._emit("connect");
-
-    const raw = { state: "available", amps: 32, watts: 0, voltage: 240 };
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify(raw)));
-
-    const s = client.getState();
-    expect(s.current_a).toBe(32);
-    expect(s.power_w).toBe(0);
+    emitState("hmd/sensor/JuiceBox/UnknownField/state", "42");
+    emitState("some/other/topic", "hello");
+    expect(client.getState()).toBeNull();
   });
 
-  it("handles alternate aliases: current→current_a, power→power_w, energy_session→session_energy_wh, firmware→firmware_version", () => {
+  it("number topics (Max-Current-Online-Wanted-) are parsed correctly", () => {
     client.connect();
     _mockClient._emit("connect");
-
-    const raw = {
-      state: "plugged",
-      current: 16,
-      power: 3840,
-      energy_session: 800,
-      firmware: "2.0.0",
-    };
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify(raw)));
-
+    emitState("hmd/number/JuiceBox/Max-Current-Online-Wanted-/state", "32.0");
     const s = client.getState();
-    expect(s.current_a).toBe(16);
-    expect(s.power_w).toBe(3840);
-    expect(s.session_energy_wh).toBe(800);
-    expect(s.firmware_version).toBe("2.0.0");
+    expect(s.max_current_wanted_a).toBe(32.0);
   });
 
-  // -------------------------------------------------------------------------
-  it("startCharging publishes the right MQTT payload", () => {
+  // ---------------------------------------------------------------------------
+  // startCharging
+  // ---------------------------------------------------------------------------
+
+  it("startCharging publishes offline AND online limits", () => {
     client.connect();
     _mockClient.connected = true;
-
     client.startCharging(24);
 
+    expect(_mockClient.publish).toHaveBeenCalledTimes(2);
     expect(_mockClient.publish).toHaveBeenCalledWith(
-      expect.stringContaining("cmd"),
-      JSON.stringify({ command: "override_start", amps: 24 }),
+      "hmd/number/JuiceBox/Max-Current-Offline-Wanted-/command",
+      "24",
+      { qos: 1 }
+    );
+    expect(_mockClient.publish).toHaveBeenCalledWith(
+      "hmd/number/JuiceBox/Max-Current-Online-Wanted-/command",
+      "24",
       { qos: 1 }
     );
   });
 
-  // -------------------------------------------------------------------------
-  it("stopCharging publishes the right payload", () => {
+  it("startCharging defaults to 32A", () => {
     client.connect();
     _mockClient.connected = true;
-
-    client.stopCharging();
-
+    client.startCharging();
     expect(_mockClient.publish).toHaveBeenCalledWith(
-      expect.stringContaining("cmd"),
-      JSON.stringify({ command: "override_stop" }),
+      "hmd/number/JuiceBox/Max-Current-Online-Wanted-/command",
+      "32",
       { qos: 1 }
     );
   });
 
-  // -------------------------------------------------------------------------
-  it("setCurrentLimit publishes the right payload", () => {
-    client.connect();
-    _mockClient.connected = true;
-
-    client.setCurrentLimit(16);
-
-    expect(_mockClient.publish).toHaveBeenCalledWith(
-      expect.stringContaining("cmd"),
-      JSON.stringify({ command: "set_current", amps: 16 }),
-      { qos: 1 }
-    );
-  });
-
-  // -------------------------------------------------------------------------
   it("startCharging throws RangeError if amps < 6", () => {
     client.connect();
     _mockClient.connected = true;
@@ -217,6 +184,56 @@ describe("juiceboxClient", () => {
     expect(() => client.startCharging(41)).toThrow(RangeError);
   });
 
+  it("startCharging throws if MQTT not connected", () => {
+    client.connect();
+    _mockClient.connected = false;
+    expect(() => client.startCharging(32)).toThrow(/not connected/i);
+  });
+
+  // ---------------------------------------------------------------------------
+  // stopCharging
+  // ---------------------------------------------------------------------------
+
+  it("stopCharging publishes offline=32 and online=0", () => {
+    client.connect();
+    _mockClient.connected = true;
+    client.stopCharging();
+
+    expect(_mockClient.publish).toHaveBeenCalledTimes(2);
+    expect(_mockClient.publish).toHaveBeenCalledWith(
+      "hmd/number/JuiceBox/Max-Current-Offline-Wanted-/command",
+      "32",
+      { qos: 1 }
+    );
+    expect(_mockClient.publish).toHaveBeenCalledWith(
+      "hmd/number/JuiceBox/Max-Current-Online-Wanted-/command",
+      "0",
+      { qos: 1 }
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // setCurrentLimit
+  // ---------------------------------------------------------------------------
+
+  it("setCurrentLimit publishes offline AND online limits", () => {
+    client.connect();
+    _mockClient.connected = true;
+    client.setCurrentLimit(16);
+
+    expect(_mockClient.publish).toHaveBeenCalledTimes(2);
+    expect(_mockClient.publish).toHaveBeenCalledWith(
+      "hmd/number/JuiceBox/Max-Current-Offline-Wanted-/command",
+      "16",
+      { qos: 1 }
+    );
+    expect(_mockClient.publish).toHaveBeenCalledWith(
+      "hmd/number/JuiceBox/Max-Current-Online-Wanted-/command",
+      "16",
+      { qos: 1 }
+    );
+  });
+
   it("setCurrentLimit throws RangeError if amps out of range", () => {
     client.connect();
     _mockClient.connected = true;
@@ -224,46 +241,40 @@ describe("juiceboxClient", () => {
     expect(() => client.setCurrentLimit(50)).toThrow(RangeError);
   });
 
-  // -------------------------------------------------------------------------
-  it("startCharging throws if MQTT not connected", () => {
-    client.connect();
-    _mockClient.connected = false;
-    expect(() => client.startCharging(32)).toThrow(/not connected/i);
-  });
+  // ---------------------------------------------------------------------------
+  // Session tracking
+  // ---------------------------------------------------------------------------
 
-  // -------------------------------------------------------------------------
-  it("session start time is set when state transitions to 'charging'", () => {
+  it("session start time is set when Status transitions to Charging", () => {
     client.connect();
     _mockClient._emit("connect");
 
-    // First message: available
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify({ state: "available" })));
+    emitState("hmd/sensor/JuiceBox/Status/state", "Plugged In");
     expect(client.getSessionStart()).toBeNull();
 
-    // Transition to charging
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify({ state: "charging" })));
+    emitState("hmd/sensor/JuiceBox/Status/state", "Charging");
     expect(client.getSessionStart()).toBeInstanceOf(Date);
   });
 
-  it("session start time is cleared when state leaves 'charging'", () => {
+  it("session start time is cleared when Status leaves Charging", () => {
     client.connect();
     _mockClient._emit("connect");
 
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify({ state: "charging" })));
+    emitState("hmd/sensor/JuiceBox/Status/state", "Charging");
     expect(client.getSessionStart()).toBeInstanceOf(Date);
 
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify({ state: "available" })));
+    emitState("hmd/sensor/JuiceBox/Status/state", "Plugged In");
     expect(client.getSessionStart()).toBeNull();
   });
 
-  it("session start time is NOT reset on successive charging messages", () => {
+  it("session start time is NOT reset on successive Charging messages", () => {
     client.connect();
     _mockClient._emit("connect");
 
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify({ state: "charging" })));
+    emitState("hmd/sensor/JuiceBox/Status/state", "Charging");
     const first = client.getSessionStart();
 
-    _mockClient._emit("message", "t", Buffer.from(JSON.stringify({ state: "charging", amps: 30 })));
-    expect(client.getSessionStart()).toBe(first); // same object
+    emitState("hmd/sensor/JuiceBox/Status/state", "Charging");
+    expect(client.getSessionStart()).toBe(first);
   });
 });

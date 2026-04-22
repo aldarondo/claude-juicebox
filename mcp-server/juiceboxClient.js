@@ -146,5 +146,6 @@ export function stopCharging() {
  */
 export function setCurrentLimit(amps) {
   if (amps < 6 || amps > 40) throw new RangeError("amps must be 6–40");
+  publish(`${HMD}/number/${DEVICE}/Max-Current-Offline-Wanted-/command`, amps);
   publish(`${HMD}/number/${DEVICE}/Max-Current-Online-Wanted-/command`, amps);
 }

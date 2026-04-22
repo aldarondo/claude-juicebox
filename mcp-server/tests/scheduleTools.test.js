@@ -280,6 +280,80 @@ describe("set_charging_schedule — immediate stop on schedule push", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Error-path tests for tool handlers
+// ---------------------------------------------------------------------------
+
+describe("get_charger_status — error paths", () => {
+  it("returns error JSON with mqtt_connected=false when no state received", async () => {
+    const jb = await import("../juiceboxClient.js");
+    vi.mocked(jb.getState).mockReturnValueOnce(null);
+    vi.mocked(jb.isConnected).mockReturnValueOnce(false);
+
+    const result = await callTool("get_charger_status", {});
+    const body = JSON.parse(result.content[0].text);
+
+    expect(body.error).toBeDefined();
+    expect(body.mqtt_connected).toBe(false);
+  });
+
+  it("returns full state object when state is available", async () => {
+    const jb = await import("../juiceboxClient.js");
+    vi.mocked(jb.getState).mockReturnValueOnce({
+      status: "Charging", power_w: 7600, current_a: 32, voltage_v: 240,
+      temperature_f: 120, signal_dbm: -65,
+    });
+    vi.mocked(jb.isConnected).mockReturnValueOnce(true);
+
+    const result = await callTool("get_charger_status", {});
+    const body = JSON.parse(result.content[0].text);
+
+    expect(body.state).toBe("Charging");
+    expect(body.mqtt_connected).toBe(true);
+  });
+});
+
+describe("get_session_info — error paths", () => {
+  it("returns error JSON when no state available", async () => {
+    const jb = await import("../juiceboxClient.js");
+    vi.mocked(jb.getState).mockReturnValueOnce(null);
+
+    const result = await callTool("get_session_info", {});
+    const body = JSON.parse(result.content[0].text);
+
+    expect(body.error).toBeDefined();
+  });
+
+  it("returns session data when state is available and not charging", async () => {
+    const jb = await import("../juiceboxClient.js");
+    vi.mocked(jb.getState).mockReturnValueOnce({ status: "Plugged In", session_energy_wh: 5000 });
+    vi.mocked(jb.getSessionStart).mockReturnValueOnce(null);
+
+    const result = await callTool("get_session_info", {});
+    const body = JSON.parse(result.content[0].text);
+
+    expect(body.charging).toBe(false);
+    expect(body.session_energy_kwh).toBe(5);
+    expect(body.elapsed_minutes).toBeNull();
+  });
+});
+
+describe("get_diagnostics — error paths", () => {
+  it("returns nulls when no state available", async () => {
+    const jb = await import("../juiceboxClient.js");
+    vi.mocked(jb.getState).mockReturnValueOnce(null);
+    vi.mocked(jb.isConnected).mockReturnValueOnce(false);
+
+    const result = await callTool("get_diagnostics", {});
+    const body = JSON.parse(result.content[0].text);
+
+    expect(body.firmware_version).toBeNull();
+    expect(body.wifi_signal_dbm).toBeNull();
+    expect(body.state_data_received).toBe(false);
+    expect(body.mqtt_connected).toBe(false);
+  });
+});
+
 describe("get_charging_schedule", () => {
   it("returns the last set schedule", async () => {
     const schedule = [

@@ -89,5 +89,5 @@
 
 ## 🚫 Blocked
 
-- ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #24817877186) — https://github.com/aldarondo/claude-juicebox/actions/runs/24817877186 — 2026-04-23 21:31 UTC
+- ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #24817877186) — https://github.com/aldarondo/claude-juicebox/actions/runs/24817877186 — 2026-04-24 08:00 UTC
 [Empty]

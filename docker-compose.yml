@@ -16,18 +16,14 @@ services:
       - ./dnsmasq/dnsmasq.conf.template:/tmp/dnsmasq.conf.template:ro
     environment:
       - LOCAL_IP=${LOCAL_IP:-192.168.0.64}
-      - JUICEBOX_IP=${JUICEBOX_IP:-192.168.0.2}
+      - JUICEBOX_IP=${JUICEBOX_IP:-192.168.0.4}
       - NIRVANA_IP=${NIRVANA_IP:-192.168.0.3}
       - GATEWAY_IP=${GATEWAY_IP:-192.168.0.1}
     # sed substitutes @@VAR@@ placeholders before handing config to dnsmasq
-    entrypoint: >
-      sh -c 'sed
-        -e "s/@@LOCAL_IP@@/$$LOCAL_IP/g"
-        -e "s/@@JUICEBOX_IP@@/$$JUICEBOX_IP/g"
-        -e "s/@@NIRVANA_IP@@/$$NIRVANA_IP/g"
-        -e "s/@@GATEWAY_IP@@/$$GATEWAY_IP/g"
-        /tmp/dnsmasq.conf.template > /etc/dnsmasq.conf
-      && exec dnsmasq -k --no-daemon -C /etc/dnsmasq.conf'
+    entrypoint:
+      - sh
+      - -c
+      - 'sed -e "s/@@LOCAL_IP@@/$$LOCAL_IP/g" -e "s/@@JUICEBOX_IP@@/$$JUICEBOX_IP/g" -e "s/@@NIRVANA_IP@@/$$NIRVANA_IP/g" -e "s/@@GATEWAY_IP@@/$$GATEWAY_IP/g" /tmp/dnsmasq.conf.template > /etc/dnsmasq.conf && exec dnsmasq -k --no-daemon -C /etc/dnsmasq.conf'
     restart: unless-stopped
     logging:
       driver: "json-file"

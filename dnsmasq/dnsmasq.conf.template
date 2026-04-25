@@ -39,8 +39,9 @@ address=/nirvana.iot-endpoint.com/@@LOCAL_IP@@
 # All other devices continue to get DHCP from the Cox router.
 #
 # Prerequisites:
-#   Cox DHCP range changed to .4–.122 — removes .2 and .3 from Cox's pool.
+#   Cox DHCP range changed to .5–.253 — removes .2/.3/.4 from Cox's pool.
 #   juicebox-dns must run with network_mode: host to receive DHCP broadcasts.
+#   .2 is reserved for future use, .3 = Nirvana, .4 = JuiceBox.
 #
 # IMPORTANT — JuiceBox has two MACs:
 #   Hardware / ZentriOS MAC : 4C:55:CC:14:50:E8  (seen in telnet `get network.mac`)
@@ -56,7 +57,7 @@ address=/nirvana.iot-endpoint.com/@@LOCAL_IP@@
 # Expected: DHCPACK(eth0) @@JUICEBOX_IP@@ 52:d4:f7:14:50:e8 JuiceBox-0E8
 #           DHCPACK(eth0) @@NIRVANA_IP@@  52:d4:f7:98:06:0a Nirvana-06A
 
-dhcp-range=@@JUICEBOX_IP@@,@@NIRVANA_IP@@,12h
+dhcp-range=192.168.0.2,@@JUICEBOX_IP@@,12h
 dhcp-host=52:d4:f7:14:50:e8,JuiceBox-0E8,@@JUICEBOX_IP@@,12h
 # Nirvana heat pump — Wi-Fi MAC (locally-administered; last 3 octets match label FC:0F:E7:98:06:0A)
 dhcp-host=52:d4:f7:98:06:0a,Nirvana-06A,@@NIRVANA_IP@@,12h

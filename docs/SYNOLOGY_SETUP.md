@@ -76,7 +76,7 @@ Set these values (everything else can stay at the defaults):
 
 ```bash
 LOCAL_IP=<NAS-LAN-IP>          # e.g. 192.168.0.64 — binds dnsmasq, JPP, and MCP
-JUICEBOX_IP=<CHARGER-IP>       # e.g. 192.168.0.2  — what dnsmasq will assign via DHCP
+JUICEBOX_IP=<CHARGER-IP>       # e.g. 192.168.0.4  — what dnsmasq will assign via DHCP
 GATEWAY_IP=<ROUTER-IP>         # e.g. 192.168.0.1  — handed to charger as default gateway
 JUICEBOX_HOST=<CHARGER-IP>     # same as JUICEBOX_IP — used by zentriosClient HTTP calls
 ```

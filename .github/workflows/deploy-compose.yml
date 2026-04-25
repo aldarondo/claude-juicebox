@@ -53,18 +53,19 @@ jobs:
             echo "$label failed after 3 attempts" >&2; return 1
           }
 
-          # Copy updated docker-compose.yml to NAS
-          retry "copy docker-compose.yml" \
-            bash -c "ssh_pipe 'cat > /volume1/docker/claude-juicebox/docker-compose.yml' < docker-compose.yml"
-
-          # Copy dnsmasq template (container reads this at start via sed substitution)
-          retry "copy dnsmasq.conf.template" \
-            bash -c "ssh_pipe 'cat > /volume1/docker/claude-juicebox/dnsmasq/dnsmasq.conf.template' < dnsmasq/dnsmasq.conf.template"
-
-          # Restart stack with updated config
-          retry "restart stack" \
-            ssh_run "cd /volume1/docker/claude-juicebox && \
+          copy_compose()   { ssh_pipe 'cat > /volume1/docker/claude-juicebox/docker-compose.yml' < docker-compose.yml; }
+          copy_template()  { ssh_pipe 'cat > /volume1/docker/claude-juicebox/dnsmasq/dnsmasq.conf.template' < dnsmasq/dnsmasq.conf.template; }
+          restart_stack()  { ssh_run "cd /volume1/docker/claude-juicebox && \
               sudo /usr/local/bin/docker compose stop 2>/dev/null; \
               sudo /usr/local/bin/docker compose rm -f 2>/dev/null; \
               sudo /usr/local/bin/docker network ls -q --filter name=claude-juicebox | xargs -r sudo /usr/local/bin/docker network rm 2>/dev/null; \
-              sudo /usr/local/bin/docker compose pull && sudo /usr/local/bin/docker compose up -d"
+              sudo /usr/local/bin/docker compose pull && sudo /usr/local/bin/docker compose up -d"; }
+
+          # Copy updated docker-compose.yml to NAS
+          retry "copy docker-compose.yml" copy_compose
+
+          # Copy dnsmasq template (container reads this at start via sed substitution)
+          retry "copy dnsmasq.conf.template" copy_template
+
+          # Restart stack with updated config
+          retry "restart stack" restart_stack

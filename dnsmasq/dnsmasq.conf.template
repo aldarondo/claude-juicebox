@@ -43,11 +43,10 @@ address=/nirvana.iot-endpoint.com/@@LOCAL_IP@@
 #   juicebox-dns must run with network_mode: host to receive DHCP broadcasts.
 #   .2 is reserved for future use, .3 = Nirvana, .4 = JuiceBox.
 #
-# IMPORTANT — JuiceBox MAC in DHCP frames:
-#   Hardware / ZentriOS MAC : 4C:55:CC:14:50:E8  ← this is what appears in DHCP frames
-#   (Earlier assumption that a locally-administered 52:D4:F7:... MAC was used was wrong —
-#    confirmed via dnsmasq logs showing 4c:55:cc:14:50:e8 in DHCPDISCOVER packets)
-#   dhcp-host MUST use 4c:55:cc:14:50:e8 or dnsmasq will silently ignore all JuiceBox DHCP.
+# IMPORTANT — JuiceBox alternates between two MACs in DHCP frames (both seen in Cox logs):
+#   4C:55:CC:14:50:E8 — hardware/ZentriOS MAC (confirmed in dnsmasq DHCPDISCOVER logs)
+#   52:D4:F7:14:50:E8 — Wi-Fi MAC (seen in Cox router history)
+#   Both dhcp-host entries below point to the same IP so either MAC gets .4 + correct DNS.
 #
 # How the DHCP race is won:
 #   dhcp-authoritative means dnsmasq sends DHCPNAK for any IP it's not offering to that MAC.
@@ -59,7 +58,7 @@ address=/nirvana.iot-endpoint.com/@@LOCAL_IP@@
 #           DHCPACK(eth0) @@NIRVANA_IP@@  52:d4:f7:98:06:0a Nirvana-06A
 
 dhcp-range=192.168.0.2,@@JUICEBOX_IP@@,12h
-dhcp-host=4c:55:cc:14:50:e8,JuiceBox-0E8,@@JUICEBOX_IP@@,12h
+dhcp-host=4c:55:cc:14:50:e8,52:d4:f7:14:50:e8,JuiceBox-0E8,@@JUICEBOX_IP@@,12h
 # Nirvana heat pump — Wi-Fi MAC (locally-administered; last 3 octets match label FC:0F:E7:98:06:0A)
 dhcp-host=52:d4:f7:98:06:0a,Nirvana-06A,@@NIRVANA_IP@@,12h
 dhcp-option=3,@@GATEWAY_IP@@    # default gateway

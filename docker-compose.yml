@@ -27,6 +27,11 @@ services:
         /tmp/dnsmasq.conf.template > /etc/dnsmasq.conf
       && exec dnsmasq -k --no-daemon -C /etc/dnsmasq.conf'
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   juicebox-mosquitto:
     image: eclipse-mosquitto:2
@@ -39,6 +44,11 @@ services:
       - "1883:1883"
       - "9001:9001"   # WebSockets — useful for debugging via MQTT Explorer
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   juicepassproxy:
     image: ghcr.io/aldarondo/claude-juicebox-juicepassproxy:${JPP_IMAGE_TAG:-latest}   # built by .github/workflows/build-juicepassproxy.yml
@@ -64,6 +74,11 @@ services:
       - IGNORE_ENELX=${IGNORE_ENELX:-true}
       - MITM_RECV_TIMEOUT=${MITM_RECV_TIMEOUT:-600}    # upstream default 120s causes restarts every ~3.3 hrs at idle; 600s = ~10 min
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     depends_on:
       - juicebox-mosquitto
 
@@ -86,6 +101,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     depends_on:
       - juicebox-mosquitto
 

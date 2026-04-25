@@ -19,6 +19,7 @@
 #   @@LOCAL_IP@@     — NAS LAN IP (LOCAL_IP in .env)
 #   @@JUICEBOX_IP@@  — JuiceBox assigned IP (JUICEBOX_IP in .env)
 #   @@GATEWAY_IP@@   — LAN gateway / router IP (GATEWAY_IP in .env)
+#   @@NIRVANA_IP@@   — Nirvana heat pump assigned IP (NIRVANA_IP in .env)
 
 # ─── Upstream DNS ───────────────────────────────────────────────────────────
 server=8.8.8.8
@@ -29,41 +30,40 @@ server=8.8.4.4
 # intercepts charger telemetry instead of it going straight to the cloud.
 address=/device-backend-udp-evos.juice.net/@@LOCAL_IP@@
 
-# ─── DHCP for JuiceBox only ──────────────────────────────────────────────────
+# Redirect Nirvana heat pump cloud to local proxy on NAS (Phase 2A)
+address=/nirvana.iot-endpoint.com/@@LOCAL_IP@@
+
+# ─── DHCP for JuiceBox + Nirvana pump ────────────────────────────────────────
 #
-# dnsmasq handles DHCP exclusively for the JuiceBox charger.
+# dnsmasq handles DHCP exclusively for these two devices.
 # All other devices continue to get DHCP from the Cox router.
 #
-# IMPORTANT — two MACs:
-#   Hardware / ZentriOS MAC : 4C:55:CC:14:50:E8  (seen in telnet `get network.mac`)
-#   Wi-Fi / DHCP MAC        : 52:D4:F7:14:50:E8  ← this is what the charger sends in DHCP
-#   dhcp-host MUST use the Wi-Fi MAC (52:...) or dnsmasq will never match the request.
-#
 # Prerequisites:
-#   1. Cox DHCP start address changed from .2 to .3 — removes .2 from Cox's pool.
-#      juicebox-dns container must run with network_mode: host (see docker-compose.yml)
-#      so it can receive DHCP broadcasts (255.255.255.255:67).
+#   Cox DHCP range changed to .4–.122 — removes .2 and .3 from Cox's pool.
+#   juicebox-dns must run with network_mode: host to receive DHCP broadcasts.
 #
-# How this wins the DHCP race:
-#   1. JuiceBox boots with dhcp.enabled=1, sends broadcast DHCPREQUEST for .197
-#   2. dnsmasq (authoritative) sends DHCPNAK — it wants to assign .2, not .197
-#   3. JuiceBox discards stored lease, sends fresh DHCPDISCOVER
-#   4. dnsmasq offers .2; Cox offers .197 (range .142-.253 means Cox starts at .142)
-#      Cox cannot offer .2 (outside its range), so even if Cox wins the offer race,
-#      JuiceBox sends DHCPREQUEST for the IP it received.
-#      If JuiceBox picks dnsmasq's offer (.2): gets DNS @@LOCAL_IP@@ ✓
-#      If JuiceBox picks Cox's offer (.197+): dnsmasq sends another DHCPNAK (not .2)
-#      → repeat until JuiceBox accepts .2 from dnsmasq
+# IMPORTANT — JuiceBox has two MACs:
+#   Hardware / ZentriOS MAC : 4C:55:CC:14:50:E8  (seen in telnet `get network.mac`)
+#   Wi-Fi / DHCP MAC        : 52:D4:F7:14:50:E8  ← this is what appears in DHCP frames
+#   dhcp-host MUST use the Wi-Fi MAC or dnsmasq will silently ignore all JuiceBox DHCP.
 #
-# Verify: sudo docker logs juicebox-dns 2>&1 | grep -i dhcp
+# How the DHCP race is won:
+#   dhcp-authoritative means dnsmasq sends DHCPNAK for any IP it's not offering to that MAC.
+#   Cox cannot offer .2 or .3 (outside its range), so even if Cox responds first, the
+#   device eventually accepts dnsmasq's offer.
+#
+# Verify: docker logs juicebox-dns | grep -i dhcp
 # Expected: DHCPACK(eth0) @@JUICEBOX_IP@@ 52:d4:f7:14:50:e8 JuiceBox-0E8
+#           DHCPACK(eth0) @@NIRVANA_IP@@  52:d4:f7:98:06:0a Nirvana-06A
 
-dhcp-range=@@JUICEBOX_IP@@,@@JUICEBOX_IP@@,12h
+dhcp-range=@@JUICEBOX_IP@@,@@NIRVANA_IP@@,12h
 dhcp-host=52:d4:f7:14:50:e8,JuiceBox-0E8,@@JUICEBOX_IP@@,12h
+# Nirvana heat pump — Wi-Fi MAC (locally-administered; last 3 octets match label FC:0F:E7:98:06:0A)
+dhcp-host=52:d4:f7:98:06:0a,Nirvana-06A,@@NIRVANA_IP@@,12h
 dhcp-option=3,@@GATEWAY_IP@@    # default gateway
 dhcp-option=6,@@LOCAL_IP@@      # DNS server → our dnsmasq
-dhcp-authoritative              # respond immediately, don't defer to other servers
-dhcp-ignore=tag:!known          # silently ignore DHCP requests from unknown MACs
+dhcp-authoritative              # respond immediately, DHCPNAK anything not in our assignments
+dhcp-ignore=tag:!known          # silently ignore DHCP from all other MACs
 
 # ─── Housekeeping ────────────────────────────────────────────────────────────
 no-hosts          # ignore /etc/hosts inside the container

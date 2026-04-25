@@ -58,6 +58,6 @@ jobs:
             ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
               -o "ProxyCommand=cloudflared access ssh --hostname nas-ssh.aldarondo.family --id $CF_CLIENT_ID --secret $CF_CLIENT_SECRET" \
               charles@nas-ssh.aldarondo.family \
-              "sudo /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml stop 2>/dev/null; sudo /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml rm -f 2>/dev/null; sudo /usr/local/bin/docker network ls -q --filter name=claude-juicebox | xargs -r sudo /usr/local/bin/docker network rm 2>/dev/null; sudo /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml pull && sudo /usr/local/bin/docker compose -f /volume1/docker/claude-juicebox/docker-compose.yml up -d" \
+              "cd /volume1/docker/claude-juicebox && git pull && sudo /usr/local/bin/docker compose stop 2>/dev/null; sudo /usr/local/bin/docker compose rm -f 2>/dev/null; sudo /usr/local/bin/docker network ls -q --filter name=claude-juicebox | xargs -r sudo /usr/local/bin/docker network rm 2>/dev/null; sudo /usr/local/bin/docker compose pull && sudo /usr/local/bin/docker compose up -d" \
               && break || { echo "SSH attempt $i failed, retrying in 10s..."; sleep 10; }
           done

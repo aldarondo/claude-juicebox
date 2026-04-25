@@ -17,6 +17,8 @@
 
 ## ✅ Completed
 
+- **🐛 Deploy fix (2026-04-25)** — `Bind mount failed: '/volume1/docker/claude-juicebox/logs' does not exist` after the `mcp-logs` named volume → bind-mount conversion. Added `ensure_dirs` step to `deploy-compose.yml` that runs `mkdir -p /volume1/docker/claude-juicebox/logs` on the NAS before `docker compose up -d`. Mirrors the pattern other coordinators use; future bind mounts can be added to the same function.
+
 - **Schedule enhancements + hardening (2026-04-25)** — `pause_charging_schedule` / `resume_charging_schedule` new MCP tools; schedule mutex lock (`withScheduleLock`); retry callbacks with exponential backoff (30s/60s/120s cap) on cron failures; log rotation extended to 5 numbered backup files with `LOG_MAX_FILES`; `LOG_LEVEL` env var added; NAS deploy key docs added (`docs/nas-deploy-key-setup.md`); 51 tests passing (up from 39)
 
 - **QA hardening pass — 18 findings fixed across security, code quality, tests, and config (2026-04-22)**

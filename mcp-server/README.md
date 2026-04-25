@@ -39,7 +39,9 @@ cp .env.example .env
 | `MQTT_BROKER` | `mqtt://localhost:1883` | MQTT broker URL |
 | `MQTT_USER` | _(none)_ | MQTT username (if broker requires auth) |
 | `MQTT_PASS` | _(none)_ | MQTT password (if broker requires auth) |
+| `TZ_OVERRIDE` | `America/Phoenix` | IANA timezone for schedule windows |
 | `LOG_FILE` | `/logs/mcp.log` | Path to the persistent log file (override for local dev) |
+| `LOG_LEVEL` | `info` | Log verbosity: `error`, `info`, or `debug` |
 
 To watch all MQTT topics published by JuicePassProxy:
 
@@ -135,7 +137,7 @@ GitHub Actions builds and deploys automatically — no manual pull needed:
 - `juicepassproxy` — on push to `juicepassproxy/Dockerfile`, and weekly Sundays at 2:00am UTC; SSHes into NAS to pull and restart after build
 - `juicebox-mcp` — on push to `mcp-server/`, and weekly Sundays at 3:00am UTC; SSHes into NAS to pull and restart after build
 
-**Required GitHub secret:** `NAS_SSH_PASSWORD` — add at `github.com/aldarondo/claude-juicebox/settings/secrets/actions`.
+**Required GitHub secrets:** `NAS_SSH_KEY` (private key for SSH auth) and `NAS_SSH_KNOWN_HOST` (output of `ssh-keyscan -t ed25519 nas-ssh.aldarondo.family`). See [docs/nas-deploy-key-setup.md](../docs/nas-deploy-key-setup.md) for setup instructions.
 
 ### GHCR authentication (private repo)
 
@@ -213,6 +215,8 @@ Run diagnostics on the JuiceBox.
 | `get_logs` | Returns recent log entries from the persistent log file (default 200 lines, max 2000); survives container replacement |
 | `get_charging_schedule` | Returns the currently programmed weekly charging schedule |
 | `set_charging_schedule` | Programs a weekly schedule of charging windows (days + start/end time + max amps); pass an empty array to clear all scheduled charging |
+| `pause_charging_schedule` | Suspends the active schedule without clearing it — cron jobs remain but are skipped; manual control (start/stop) works normally |
+| `resume_charging_schedule` | Re-enables a paused schedule; the next cron window will fire as normal |
 
 ### Scheduling example
 
@@ -247,7 +251,7 @@ Times are in 24-hour format, `America/Phoenix` timezone. Calling `set_charging_s
 
 All `console.log` and `console.error` output is written to both stdout and a persistent log file at `/logs/mcp.log` inside the container. The `mcp-logs` named Docker volume backs this path, so logs survive container replacement on redeploy.
 
-- **Rotation:** when `mcp.log` exceeds 500 KB it is renamed to `mcp.log.1` and a fresh file begins.
+- **Rotation:** when `mcp.log` exceeds 500 KB it is renamed to `mcp.log.1`; previous backups shift down (`mcp.log.1` → `mcp.log.2`, etc., up to `mcp.log.5`). The oldest is dropped.
 - **Format:** `[ISO-8601 timestamp] INFO|ERROR  <message>`
 - **Override path:** set `LOG_FILE` env var to change the log file path (useful for local dev).
 - **Access via MCP:** call `get_logs` (optionally passing `lines: N`) to retrieve recent entries without shelling into the container.

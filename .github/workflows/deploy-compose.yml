@@ -54,7 +54,7 @@ jobs:
           }
 
           copy_compose()   { ssh_pipe 'cat > /volume1/docker/claude-juicebox/docker-compose.yml' < docker-compose.yml; }
-          copy_template()  { ssh_pipe 'cat > /volume1/docker/claude-juicebox/dnsmasq/dnsmasq.conf.template' < dnsmasq/dnsmasq.conf.template; }
+          copy_template()  { ssh_pipe 'sudo tee /volume1/docker/claude-juicebox/dnsmasq/dnsmasq.conf.template > /dev/null' < dnsmasq/dnsmasq.conf.template; }
           restart_stack()  { ssh_run "cd /volume1/docker/claude-juicebox && \
               sudo /usr/local/bin/docker compose stop 2>/dev/null; \
               sudo /usr/local/bin/docker compose rm -f 2>/dev/null; \

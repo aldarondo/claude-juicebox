@@ -49,6 +49,8 @@ All tools are exposed over SSE at `http://<YOUR-NAS-IP>:3001/sse`.
 | `set_current_limit` | `amps` (6–40) | Throttle current during an active session |
 | `get_charging_schedule` | — | Return the currently programmed weekly schedule |
 | `set_charging_schedule` | `schedule[]` (days, start, end, max_amps) | Program a weekly charging schedule; pass `[]` to clear |
+| `pause_charging_schedule` | — | Suspend the weekly schedule without clearing it (manual control only until resumed) |
+| `resume_charging_schedule` | — | Re-enable the weekly schedule after a pause |
 
 ### WiFi & network (via ZentriOS HTTP API on port 80)
 
@@ -226,7 +228,7 @@ Cox Panoramic's Local IP Configuration page does not expose a DNS server field i
 | Secret | Purpose |
 |--------|---------|
 | `NAS_SSH_KEY` | Private key for SSH auth to the NAS (key-based, not password). Add the corresponding public key to `~/.ssh/authorized_keys` on the NAS. |
-| `NAS_SSH_PASSWORD` | NAS user password — used only for `sudo` in deploy commands, not for SSH connection auth. |
+| `NAS_SSH_KNOWN_HOST` | NAS host key entry (output of `ssh-keyscan -p 2222 <NAS-IP>`). Written to `~/.ssh/known_hosts` in CI so `StrictHostKeyChecking=yes` passes without interactive prompts. See [docs/nas-deploy-key-setup.md](docs/nas-deploy-key-setup.md) for setup instructions. |
 | `CF_ACCESS_CLIENT_ID` | Cloudflare Access service token ID (for SSH via CF tunnel). |
 | `CF_ACCESS_CLIENT_SECRET` | Cloudflare Access service token secret. |
 
@@ -382,7 +384,7 @@ MQTT_BROKER=mqtt://localhost:1883 node server.js
 
 # 3. In another terminal — confirm health endpoint responds
 curl http://localhost:3001/health
-# Expected: {"ok":true,"mqtt_connected":true,"schedule_jobs":0}
+# Expected: {"ok":true,"mqtt_connected":true,"schedule_jobs":0,"schedule_paused":false}
 
 # 4. Simulate charger telemetry arriving on MQTT
 docker exec juicebox-mosquitto mosquitto_pub \
@@ -511,6 +513,27 @@ Caused by zombie containers or duplicate networks left over from a previous fail
 ```
 
 **Prevention:** The deploy workflow already runs this sequence automatically. The root cause is usually a prior deploy that was interrupted mid-recreation — each failed recreate can leave behind an intermediate container (e.g. `<hash>_juicebox-mcp`) and an orphan network. Running `compose stop/rm` before `up -d` clears both.
+
+### Container shows "unhealthy" in `docker ps`
+
+Each service has a built-in Docker healthcheck. Inspect the current health status and last check output:
+
+```bash
+# Quick status — all containers
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+# Detailed health output for a specific container (last 5 check results)
+docker inspect juicebox-mcp | jq '.[0].State.Health'
+docker inspect juicebox-mosquitto | jq '.[0].State.Health'
+docker inspect juicepassproxy | jq '.[0].State.Health'
+
+# Common fixes:
+# juicebox-mcp unhealthy → check MCP server logs: docker logs juicebox-mcp --tail 50
+# juicebox-mosquitto unhealthy → check broker logs: docker logs juicebox-mosquitto --tail 50
+# juicepassproxy unhealthy → telnet debug port not open; check: docker logs juicepassproxy --tail 50
+```
+
+Health check intervals are 30s with a 10–20s `start_period` — a freshly started container will show `starting` for up to 20s before its first check.
 
 ### GitHub Actions workflow fails immediately with "workflow file issue" (no jobs start)
 

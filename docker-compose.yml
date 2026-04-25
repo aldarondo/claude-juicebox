@@ -3,7 +3,7 @@ version: "3.8"
 services:
 
   juicebox-dns:
-    image: andyshinn/dnsmasq:latest
+    image: andyshinn/dnsmasq:2.89
     container_name: juicebox-dns
     cap_add:
       - NET_ADMIN
@@ -34,7 +34,7 @@ services:
         max-file: "5"
 
   juicebox-mosquitto:
-    image: eclipse-mosquitto:2
+    image: eclipse-mosquitto:2.0.21
     container_name: juicebox-mosquitto
     volumes:
       - ./mosquitto/config:/mosquitto/config:ro
@@ -44,6 +44,12 @@ services:
       - "1883:1883"
       - "9001:9001"   # WebSockets — useful for debugging via MQTT Explorer
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-t", "$$SYS/broker/clients/connected", "-C", "1", "--quiet"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -74,6 +80,13 @@ services:
       - IGNORE_ENELX=${IGNORE_ENELX:-true}
       - MITM_RECV_TIMEOUT=${MITM_RECV_TIMEOUT:-600}    # upstream default 120s causes restarts every ~3.3 hrs at idle; 600s = ~10 min
     restart: unless-stopped
+    healthcheck:
+      # JPP exposes a telnet debug port on 2000 when running; nc checks it's listening.
+      test: ["CMD", "sh", "-c", "nc -z localhost 2000 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging:
       driver: "json-file"
       options:

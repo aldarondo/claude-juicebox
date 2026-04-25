@@ -25,14 +25,22 @@ import * as zentrios from "./zentriosClient.js";
 import { isTimeInSchedule } from "./scheduleUtils.js";
 import { STATUS } from "./constants.js";
 
-const PORT     = process.env.PORT     || 3001;
-const TZ       = process.env.TZ_OVERRIDE || "America/Phoenix";
-const LOG_FILE = process.env.LOG_FILE || "/logs/mcp.log";
+const PORT          = process.env.PORT          || 3001;
+const TZ            = process.env.TZ_OVERRIDE   || "America/Phoenix";
+const LOG_FILE      = process.env.LOG_FILE       || "/logs/mcp.log";
+const LOG_LEVEL     = (process.env.LOG_LEVEL     || "info").toLowerCase(); // "error" | "info" | "debug"
 const LOG_MAX_BYTES = 500_000; // rotate at 500 KB
+const LOG_MAX_FILES = 5;       // keep up to 5 rotated files
 
 function writeLogFile(line) {
   try {
     if (existsSync(LOG_FILE) && statSync(LOG_FILE).size > LOG_MAX_BYTES) {
+      // Rotate: shift existing backups down, drop the oldest
+      for (let i = LOG_MAX_FILES - 1; i >= 1; i--) {
+        const from = LOG_FILE + (i > 1 ? `.${i}` : "");
+        const to   = LOG_FILE + `.${i + 1}`;
+        if (existsSync(from)) renameSync(from, to);
+      }
       renameSync(LOG_FILE, LOG_FILE + ".1");
     }
     appendFileSync(LOG_FILE, line + "\n");
@@ -40,10 +48,14 @@ function writeLogFile(line) {
 }
 
 // Patch console so all output (including juiceboxClient.js) goes to both
-// stdout and the persistent log file.
+// stdout and the persistent log file. LOG_LEVEL filters which lines are written:
+//   "error" — only console.error
+//   "info"  — console.log + console.error (default)
+//   "debug" — everything (same as info for now; extend as needed)
 const _log = console.log.bind(console);
 const _err = console.error.bind(console);
 console.log = (...args) => {
+  if (LOG_LEVEL === "error") return;
   const line = `[${new Date().toISOString()}] INFO  ${args.join(" ")}`;
   _log(line);
   writeLogFile(line);
@@ -61,8 +73,21 @@ juicebox.connect();
 // Schedule state — module-level, shared across connections
 // ---------------------------------------------------------------------------
 
-let scheduleJobs   = [];   // active node-cron tasks
-let activeSchedule = [];   // last schedule passed by the coordinator (for inspection)
+let scheduleJobs    = [];    // active node-cron tasks
+let activeSchedule  = [];    // last schedule passed by the coordinator (for inspection)
+let schedulePaused  = false; // true when jobs are suspended without clearing them
+
+// Serialise set_charging_schedule mutations. Although Node.js is single-threaded
+// and the schedule body contains no await points (so there is no real race), the
+// lock makes the intent explicit and prevents surprises if an await is added later.
+let _scheduleLock = Promise.resolve();
+function withScheduleLock(fn) {
+  const next = _scheduleLock.then(fn);
+  // Don't let a rejection in fn poison the lock chain — swallow it here; the
+  // caller's own try/catch will handle it.
+  _scheduleLock = next.catch(() => {});
+  return next;
+}
 
 // day name → cron weekday number (0 = Sunday … 6 = Saturday)
 const DAY_NUM = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
@@ -75,16 +100,50 @@ function clearSchedule() {
   scheduleJobs.forEach(j => j.stop());
   scheduleJobs   = [];
   activeSchedule = [];
+  schedulePaused = false;
 }
 
+// Build a cron callback with exponential backoff on consecutive failures.
+// Delays: 30 s after fail #1, 60 s after #2, 120 s after #3+ (capped).
+function makeRetryCallback(label, action) {
+  let fails = 0;
+  return () => {
+    try {
+      action();
+      if (fails > 0) {
+        console.log(`[schedule] "${label}" recovered after ${fails} failure(s)`);
+      }
+      fails = 0;
+    } catch (e) {
+      fails++;
+      const delay = Math.min(30 * Math.pow(2, fails - 1), 120);
+      console.error(`[schedule] "${label}" failed (attempt ${fails}): ${e.message}. Retrying in ${delay}s`);
+      setTimeout(() => {
+        try {
+          action();
+          console.log(`[schedule] "${label}" retry succeeded`);
+          fails = 0;
+        } catch (e2) {
+          console.error(`[schedule] "${label}" retry also failed: ${e2.message}`);
+        }
+      }, delay * 1000);
+    }
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Factory: create a new McpServer instance per SSE connection.
-// MCP SDK 1.9+ requires one McpServer per transport — a single shared server
-// cannot be connected to more than one transport simultaneously. Claude Desktop
-// opens a fresh SSE connection on every session, so each GET /sse creates its
-// own server instance. Module-level state (scheduleJobs, activeSchedule) is
-// intentionally shared across all instances so schedules survive reconnects.
+//
+// WHY one server per connection: MCP SDK 1.9+ does not support connecting a
+// single McpServer to multiple transports simultaneously — calling
+// server.connect(transport) a second time on the same instance will throw.
+// Claude Desktop opens a fresh SSE GET /sse on every session start (and again
+// on reconnect after a network drop). Each GET creates its own SSEServerTransport,
+// so we must also create a fresh McpServer for that transport.
+//
+// Module-level state (scheduleJobs, activeSchedule, schedulePaused) is
+// intentionally shared across all instances so the charging schedule survives
+// client reconnects without needing to be re-sent by the coordinator.
 // ---------------------------------------------------------------------------
 
 export function createMcpServer() {
@@ -296,6 +355,7 @@ export function createMcpServer() {
       return { content: [{ type: "text", text: JSON.stringify({
         schedule:   activeSchedule,
         job_count:  scheduleJobs.length,
+        paused:     schedulePaused,
       }, null, 2) }] };
     }
   );
@@ -323,7 +383,7 @@ export function createMcpServer() {
         max_amps: z.number().min(6).max(40).describe("Max charging current for this window (amps)"),
       })).describe("Charging windows. Pass [] to clear the schedule and stop all scheduled charging."),
     },
-    async ({ schedule }) => {
+    ({ schedule }) => withScheduleLock(async () => {
       clearSchedule();
 
       // If current time is outside all windows in the new schedule, stop any
@@ -353,35 +413,21 @@ export function createMcpServer() {
 
         const startJob = cron.schedule(
           `${startM} ${startH} * * ${cronDays}`,
-          (() => {
-            let fails = 0;
-            return () => {
-              console.log(`[schedule] START charging at ${window.max_amps}A — ${label}`);
-              try { juicebox.startCharging(window.max_amps); fails = 0; }
-              catch (e) {
-                fails++;
-                console.error(`[schedule] Failed to start charging (fail #${fails}): ${e.message}`);
-                if (fails >= 3) console.error(`[schedule] WARNING: ${fails} consecutive failures for "${label}" start — check MQTT`);
-              }
-            };
-          })(),
+          makeRetryCallback(`START ${label}`, () => {
+            console.log(`[schedule] START charging at ${window.max_amps}A — ${label}`);
+            if (!schedulePaused) juicebox.startCharging(window.max_amps);
+            else console.log(`[schedule] Schedule paused — skipping START for "${label}"`);
+          }),
           { timezone: TZ }
         );
 
         const stopJob = cron.schedule(
           `${endM} ${endH} * * ${cronDays}`,
-          (() => {
-            let fails = 0;
-            return () => {
-              console.log(`[schedule] STOP charging — ${label}`);
-              try { juicebox.stopCharging(); fails = 0; }
-              catch (e) {
-                fails++;
-                console.error(`[schedule] Failed to stop charging (fail #${fails}): ${e.message}`);
-                if (fails >= 3) console.error(`[schedule] WARNING: ${fails} consecutive failures for "${label}" stop — check MQTT`);
-              }
-            };
-          })(),
+          makeRetryCallback(`STOP ${label}`, () => {
+            console.log(`[schedule] STOP charging — ${label}`);
+            if (!schedulePaused) juicebox.stopCharging();
+            else console.log(`[schedule] Schedule paused — skipping STOP for "${label}"`);
+          }),
           { timezone: TZ }
         );
 
@@ -393,7 +439,48 @@ export function createMcpServer() {
         windows_scheduled:   schedule.length,
         cron_jobs_created:   scheduleJobs.length,
         stopped_immediately: stoppedImmediately,
+        paused:              schedulePaused,
         schedule,
+      }, null, 2) }] };
+    })
+  );
+
+  server.tool(
+    "pause_charging_schedule",
+    "Suspends automatic execution of all scheduled charging windows without clearing them. " +
+    "Cron jobs continue to fire at the scheduled times but are skipped silently. " +
+    "Use resume_charging_schedule to re-enable. Does not affect manually triggered start_charging calls.",
+    {},
+    async () => {
+      if (schedulePaused) {
+        return { content: [{ type: "text", text: JSON.stringify({ success: true, message: "Schedule was already paused.", paused: true }) }] };
+      }
+      schedulePaused = true;
+      console.log("[schedule] Schedule paused — cron jobs will fire but be skipped");
+      return { content: [{ type: "text", text: JSON.stringify({
+        success: true,
+        message: "Schedule paused. Cron windows will be skipped until resume_charging_schedule is called.",
+        paused:  true,
+        windows: activeSchedule.length,
+      }, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "resume_charging_schedule",
+    "Re-enables a paused charging schedule. The next scheduled window will execute normally.",
+    {},
+    async () => {
+      if (!schedulePaused) {
+        return { content: [{ type: "text", text: JSON.stringify({ success: true, message: "Schedule was not paused.", paused: false }) }] };
+      }
+      schedulePaused = false;
+      console.log("[schedule] Schedule resumed");
+      return { content: [{ type: "text", text: JSON.stringify({
+        success: true,
+        message: "Schedule resumed. Next window will execute normally.",
+        paused:  false,
+        windows: activeSchedule.length,
       }, null, 2) }] };
     }
   );
@@ -428,7 +515,7 @@ app.post("/messages", express.json(), async (req, res) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, mqtt_connected: juicebox.isConnected(), schedule_jobs: scheduleJobs.length });
+  res.json({ ok: true, mqtt_connected: juicebox.isConnected(), schedule_jobs: scheduleJobs.length, schedule_paused: schedulePaused });
 });
 
 app.listen(PORT, () => {

@@ -129,7 +129,7 @@ describe("server.js import sanity", () => {
     expect(_capturedServer).not.toBeNull();
   });
 
-  it("all 8 expected tools are registered", () => {
+  it("all expected tools are registered", () => {
     const tools = Object.keys(_capturedServer._registeredTools);
     expect(tools).toContain("get_charger_status");
     expect(tools).toContain("get_session_info");
@@ -139,6 +139,8 @@ describe("server.js import sanity", () => {
     expect(tools).toContain("get_diagnostics");
     expect(tools).toContain("get_charging_schedule");
     expect(tools).toContain("set_charging_schedule");
+    expect(tools).toContain("pause_charging_schedule");
+    expect(tools).toContain("resume_charging_schedule");
   });
 });
 
@@ -401,6 +403,7 @@ describe("HTTP endpoints", () => {
     expect(body.ok).toBe(true);
     expect(typeof body.mqtt_connected).toBe("boolean");
     expect(typeof body.schedule_jobs).toBe("number");
+    expect(typeof body.schedule_paused).toBe("boolean");
   });
 
   it("GET /sse responds with text/event-stream content-type", async () => {
@@ -478,6 +481,67 @@ describe("set_charging_schedule — concurrency", () => {
     // One of the two schedules wins — state must be consistent (1 window, 2 jobs)
     expect(body.schedule).toHaveLength(1);
     expect(body.job_count).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pause / resume charging schedule
+// ---------------------------------------------------------------------------
+
+describe("pause_charging_schedule / resume_charging_schedule", () => {
+  it("pauses an active schedule", async () => {
+    await callTool("set_charging_schedule", {
+      schedule: [{ days: ["mon"], start: "22:00", end: "06:00", max_amps: 32 }],
+    });
+
+    const pauseResult = await callTool("pause_charging_schedule", {});
+    const body = JSON.parse(pauseResult.content[0].text);
+    expect(body.success).toBe(true);
+    expect(body.paused).toBe(true);
+
+    // Schedule should still be present after pause
+    const schedResult = await callTool("get_charging_schedule", {});
+    const schedBody = JSON.parse(schedResult.content[0].text);
+    expect(schedBody.paused).toBe(true);
+    expect(schedBody.schedule).toHaveLength(1);
+  });
+
+  it("is idempotent — pausing an already-paused schedule returns success", async () => {
+    await callTool("pause_charging_schedule", {});
+    const result = await callTool("pause_charging_schedule", {});
+    const body = JSON.parse(result.content[0].text);
+    expect(body.success).toBe(true);
+    expect(body.paused).toBe(true);
+  });
+
+  it("resumes a paused schedule", async () => {
+    await callTool("pause_charging_schedule", {});
+    const result = await callTool("resume_charging_schedule", {});
+    const body = JSON.parse(result.content[0].text);
+    expect(body.success).toBe(true);
+    expect(body.paused).toBe(false);
+
+    const schedResult = await callTool("get_charging_schedule", {});
+    const schedBody = JSON.parse(schedResult.content[0].text);
+    expect(schedBody.paused).toBe(false);
+  });
+
+  it("is idempotent — resuming a non-paused schedule returns success", async () => {
+    await callTool("resume_charging_schedule", {});
+    const result = await callTool("resume_charging_schedule", {});
+    const body = JSON.parse(result.content[0].text);
+    expect(body.success).toBe(true);
+    expect(body.paused).toBe(false);
+  });
+
+  it("set_charging_schedule clears pause state", async () => {
+    await callTool("pause_charging_schedule", {});
+    await callTool("set_charging_schedule", {
+      schedule: [{ days: ["tue"], start: "08:00", end: "12:00", max_amps: 16 }],
+    });
+    const schedResult = await callTool("get_charging_schedule", {});
+    const schedBody = JSON.parse(schedResult.content[0].text);
+    expect(schedBody.paused).toBe(false);
   });
 });
 

@@ -17,6 +17,8 @@
 
 ## ✅ Completed
 
+- **Schedule enhancements + hardening (2026-04-25)** — `pause_charging_schedule` / `resume_charging_schedule` new MCP tools; schedule mutex lock (`withScheduleLock`); retry callbacks with exponential backoff (30s/60s/120s cap) on cron failures; log rotation extended to 5 numbered backup files with `LOG_MAX_FILES`; `LOG_LEVEL` env var added; NAS deploy key docs added (`docs/nas-deploy-key-setup.md`); 51 tests passing (up from 39)
+
 - **QA hardening pass — 18 findings fixed across security, code quality, tests, and config (2026-04-22)**
   - *Security (Critical):* GitHub Actions SSH auth migrated from password (`sshpass`) to key-based auth (`NAS_SSH_KEY` secret + `~/.ssh/id_ed25519`); deploy key generated and authorized on NAS
   - *Security (Major):* `StrictHostKeyChecking=no` → `StrictHostKeyChecking=accept-new` in all 3 CI workflows
@@ -89,5 +91,4 @@
 
 ## 🚫 Blocked
 
-- ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #24920106919) — https://github.com/aldarondo/claude-juicebox/actions/runs/24920106919 — 2026-04-25 08:00 UTC
 [Empty]

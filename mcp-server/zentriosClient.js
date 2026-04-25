@@ -46,8 +46,8 @@
 
 import { get as httpGet } from "http";
 
-const HOST    = process.env.JUICEBOX_HOST || "192.168.0.2";
-const TIMEOUT = 5000;
+const HOST    = process.env.JUICEBOX_HOST    || "192.168.0.2";
+const TIMEOUT = parseInt(process.env.ZENTRIOS_TIMEOUT || "5000", 10);
 
 /**
  * Run a ZentriOS command via the HTTP API.
@@ -63,12 +63,12 @@ export async function runCommand(cmd) {
         try {
           const parsed = JSON.parse(body);
           if (parsed.code !== 0) {
-            reject(new Error(`ZentriOS error (code ${parsed.code}): ${parsed.response?.trim()}`));
+            reject(new Error(`ZentriOS error (code ${parsed.code}) for "${cmd}": ${parsed.response?.trim() || "(no response)"}`));
           } else {
             resolve(parsed.response?.trim() ?? "");
           }
         } catch {
-          reject(new Error(`Failed to parse ZentriOS response: ${body.slice(0, 200)}`));
+          reject(new Error(`Failed to parse ZentriOS response for "${cmd}": ${body.slice(0, 200)}`));
         }
       });
     });

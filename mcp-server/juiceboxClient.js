@@ -28,17 +28,14 @@
  */
 
 import mqtt from "mqtt";
-import { STATUS, MQTT_CMD } from "./constants.js";
+import { STATUS, MQTT_CMD, HMD_PREFIX, DEVICE_NAME } from "./constants.js";
 
-const BROKER  = process.env.MQTT_BROKER || "mqtt://localhost:1883";
-const DEVICE  = "JuiceBox";  // JPP v0.5 uses the fixed name "JuiceBox" not the ID
-
-// Topic prefix used by JuicePassProxy v0.5.x HA-discoverable topics
-const HMD = "hmd";
+const BROKER = process.env.MQTT_BROKER || "mqtt://localhost:1883";
 
 let mqttClient   = null;
 let state        = {};   // aggregated charger state from per-field topics
 let sessionStart = null; // wall-clock time when charging first detected
+let prevSessionEnergy = null; // track for rollover detection
 
 function buildConnectOptions() {
   const opts = { reconnectPeriod: 5000, connectTimeout: 10_000 };
@@ -73,16 +70,30 @@ function handleMessage(topic, payload) {
   const mapping   = FIELD_MAP[fieldName];
   if (!mapping) return;
 
-  const prev   = state.status;
+  const prev = state.status;
   state[mapping.key] = mapping.parse(val);
 
-  // Track session start time
+  // Track session start time; detect energy counter rollover (charger/proxy reboot)
   if (mapping.key === "status") {
     if (val === STATUS.CHARGING && prev !== STATUS.CHARGING) {
       sessionStart = new Date();
+      prevSessionEnergy = state.session_energy_wh ?? null;
     } else if (val !== STATUS.CHARGING) {
       sessionStart = null;
+      prevSessionEnergy = null;
     }
+  }
+
+  // Energy rollover: if session energy goes backwards the charger or proxy
+  // restarted mid-session. Reset the session timer so elapsed time and energy
+  // totals remain coherent.
+  if (mapping.key === "session_energy_wh" && sessionStart !== null) {
+    const current = state.session_energy_wh;
+    if (prevSessionEnergy !== null && current < prevSessionEnergy) {
+      console.log(`[juicebox] Session energy rollover detected (${prevSessionEnergy} → ${current} Wh) — resetting session start`);
+      sessionStart = new Date();
+    }
+    prevSessionEnergy = current;
   }
 }
 
@@ -92,9 +103,9 @@ export function connect() {
   mqttClient.on("connect", () => {
     console.log(`[juicebox] Connected to MQTT at ${BROKER}`);
     // Subscribe to all hmd state topics
-    mqttClient.subscribe(`${HMD}/#`, { qos: 1 }, (err) => {
+    mqttClient.subscribe(`${HMD_PREFIX}/#`, { qos: 1 }, (err) => {
       if (err) console.error("[juicebox] Subscribe error:", err.message);
-      else     console.log(`[juicebox] Subscribed to ${HMD}/#`);
+      else     console.log(`[juicebox] Subscribed to ${HMD_PREFIX}/#`);
     });
   });
 
@@ -126,8 +137,8 @@ export function isConnected()     { return mqttClient?.connected ?? false; }
  */
 export function startCharging(amps = 32) {
   if (amps < 6 || amps > 40) throw new RangeError("amps must be 6–40");
-  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.OFFLINE_WANTED}/command`, amps);
-  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.ONLINE_WANTED}/command`, amps);
+  publish(`${HMD_PREFIX}/number/${DEVICE_NAME}/${MQTT_CMD.OFFLINE_WANTED}/command`, amps);
+  publish(`${HMD_PREFIX}/number/${DEVICE_NAME}/${MQTT_CMD.ONLINE_WANTED}/command`, amps);
 }
 
 /**
@@ -138,8 +149,8 @@ export function startCharging(amps = 32) {
  */
 export function stopCharging() {
   // Offline limit must be set or JPP errors: "Must have both current_max defined"
-  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.OFFLINE_WANTED}/command`, 32);
-  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.ONLINE_WANTED}/command`, 0);
+  publish(`${HMD_PREFIX}/number/${DEVICE_NAME}/${MQTT_CMD.OFFLINE_WANTED}/command`, 32);
+  publish(`${HMD_PREFIX}/number/${DEVICE_NAME}/${MQTT_CMD.ONLINE_WANTED}/command`, 0);
 }
 
 /**
@@ -147,6 +158,6 @@ export function stopCharging() {
  */
 export function setCurrentLimit(amps) {
   if (amps < 6 || amps > 40) throw new RangeError("amps must be 6–40");
-  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.OFFLINE_WANTED}/command`, amps);
-  publish(`${HMD}/number/${DEVICE}/${MQTT_CMD.ONLINE_WANTED}/command`, amps);
+  publish(`${HMD_PREFIX}/number/${DEVICE_NAME}/${MQTT_CMD.OFFLINE_WANTED}/command`, amps);
+  publish(`${HMD_PREFIX}/number/${DEVICE_NAME}/${MQTT_CMD.ONLINE_WANTED}/command`, amps);
 }

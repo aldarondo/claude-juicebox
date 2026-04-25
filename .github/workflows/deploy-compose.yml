@@ -39,7 +39,7 @@ jobs:
         run: |
           # Requires one-time NAS setup — see docs/nas-deploy-key-setup.md
           NAS=charles@nas-ssh.aldarondo.family
-          SSH="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+          SSH="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
             -o ProxyCommand='cloudflared access ssh --hostname nas-ssh.aldarondo.family --id $CF_CLIENT_ID --secret $CF_CLIENT_SECRET'"
 
           ssh_run() { eval "$SSH $NAS \"$1\""; }

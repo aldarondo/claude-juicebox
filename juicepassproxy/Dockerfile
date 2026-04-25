@@ -17,9 +17,12 @@ FROM ghcr.io/juicerescue/juicepassproxy:latest
 RUN python3 - <<'EOF'
 import pathlib, re, sys
 
-files = list(pathlib.Path("/").rglob("juicepassproxy.py"))
+# MITM_RECV_TIMEOUT is defined in const.py, not juicepassproxy.py
+files = list(pathlib.Path("/").rglob("const.py"))
+# Filter to the juicepassproxy package (avoid unrelated const.py files)
+files = [f for f in files if "juicepassproxy" in str(f)]
 if not files:
-    print("ERROR: juicepassproxy.py not found", file=sys.stderr)
+    print("ERROR: juicepassproxy/const.py not found", file=sys.stderr)
     sys.exit(1)
 
 target = files[0]
@@ -35,7 +38,7 @@ if patched == src:
     print(
         f"WARNING: MITM_RECV_TIMEOUT pattern not found in {target} — "
         "already patched or upstream source changed. "
-        "Set MITM_RECV_TIMEOUT env var manually if needed.",
+        "Review juicepassproxy/Dockerfile.",
         file=sys.stderr,
     )
 else:
@@ -110,4 +113,58 @@ for filename, pattern in patches:
     else:
         target.write_text(patched)
         print(f"Patched {n} exception handler(s) in {target}")
+EOF
+
+# Guard send_cmd_message_to_juicebox and send_data_to_juicebox against
+# self._juicebox_addr being None.
+#
+# Background: both functions call send_data(..., self._juicebox_addr) without
+# checking whether _juicebox_addr is None. The address is only set once the
+# first UDP packet is received from the charger. If the coordinator sends a
+# charging command before the charger has ever connected (e.g. at startup, or
+# after a proxy restart), sendto() raises:
+#   TypeError: sendto(): AF_INET address must be tuple, not NoneType
+# aiorun treats this as an unhandled exception and shuts down the entire
+# process, causing a container restart loop.
+#
+# Fix: add an early-return guard in both functions that logs a warning and
+# returns without crashing when the address is not yet known.
+
+RUN python3 - <<'EOF'
+import pathlib, re, sys
+
+files = list(pathlib.Path("/").rglob("juicebox_mitm.py"))
+if not files:
+    print("ERROR: juicebox_mitm.py not found", file=sys.stderr)
+    sys.exit(1)
+
+target = files[0]
+src = target.read_text()
+patched = src
+
+# Guard send_data_to_juicebox
+patched, n1 = re.subn(
+    r'(async def send_data_to_juicebox\(self, data: bytes\):\s*\n)(\s*)(await self\.send_data\(data, self\._juicebox_addr\))',
+    r'\1\2if self._juicebox_addr is None:\n\2    _LOGGER.warning("Cannot send data: JuiceBox address unknown (no UDP received yet)")\n\2    return\n\2\3',
+    patched,
+)
+
+# Guard send_cmd_message_to_juicebox — the final send_data call inside the function
+patched, n2 = re.subn(
+    r'(if cmd_message:\s*\n)(\s*)(_LOGGER\.info\(f"Sending command to juicebox)',
+    r'\1\2if self._juicebox_addr is None:\n\2    _LOGGER.warning("Cannot send command: JuiceBox address unknown (no UDP received yet)")\n\2    return\n\2\3',
+    patched,
+)
+
+total = n1 + n2
+if total == 0:
+    print(
+        f"WARNING: sendto-guard patterns not found in {target} — "
+        "already patched or upstream source changed. "
+        "Review juicepassproxy/Dockerfile.",
+        file=sys.stderr,
+    )
+else:
+    target.write_text(patched)
+    print(f"Patched {total} sendto guard(s) in {target} (send_data_to_juicebox={n1}, send_cmd_message={n2})")
 EOF

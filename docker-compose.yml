@@ -104,7 +104,7 @@ services:
       - MQTT_USER=${MQTT_USER:-}
       - MQTT_PASS=${MQTT_PASS:-}
     volumes:
-      - mcp-logs:/logs
+      - /volume1/docker/claude-juicebox/logs:/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-3001}/health"]
@@ -124,4 +124,3 @@ volumes:
   mosquitto-data:
   mosquitto-log:
   juicepassproxy-config:
-  mcp-logs:

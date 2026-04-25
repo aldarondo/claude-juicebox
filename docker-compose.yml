@@ -3,7 +3,7 @@ version: "3.8"
 services:
 
   juicebox-dns:
-    image: andyshinn/dnsmasq:2.89
+    image: andyshinn/dnsmasq:latest
     container_name: juicebox-dns
     cap_add:
       - NET_ADMIN

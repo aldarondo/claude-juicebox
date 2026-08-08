@@ -68,7 +68,17 @@ export async function runCommand(cmd) {
   }
   const url = `http://${HOST}/command/${encodeURIComponent(cmd)}`;
   return new Promise((resolve, reject) => {
-    const req = httpGet(url, { timeout: TIMEOUT }, (res) => {
+    // agent: false — one fresh connection per request, no pooling.
+    //
+    // ZentriOS closes the TCP connection after every response, but Node >=19's
+    // global agent defaults to keepAlive: true. So it parks the dead socket in
+    // the pool and the *next* sequential request reuses it and dies with
+    // "socket hang up". This is why get_diagnostics returned wifi_rssi: null:
+    // getSystemInfo() succeeded, then getRssi() ran immediately after and
+    // inherited the corpse. Parallel batches (getWifiInfo) were unaffected
+    // because none of their sockets were idle yet, which made this look like a
+    // charger-side quirk rather than connection reuse.
+    const req = httpGet(url, { timeout: TIMEOUT, agent: false }, (res) => {
       let body = "";
       res.on("data", (chunk) => (body += chunk));
       res.on("end", () => {

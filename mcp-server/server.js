@@ -240,8 +240,13 @@ export function createMcpServer() {
       const s = juicebox.getState();
       let sysInfo = null;
       let rssi = null;
-      try { sysInfo = await zentrios.getSystemInfo(); } catch { /* ZentriOS offline */ }
-      try { rssi = await zentrios.getRssi(); } catch {}
+      // Log ZentriOS failures instead of swallowing them. A bare `catch {}` here
+      // reported wifi_rssi: null for a live charger with no hint as to why, and
+      // hid both the connection-reuse bug and a missing JUICEBOX_HOST.
+      try { sysInfo = await zentrios.getSystemInfo(); }
+      catch (e) { console.error(`[zentrios] getSystemInfo failed: ${e.message}`); }
+      try { rssi = await zentrios.getRssi(); }
+      catch (e) { console.error(`[zentrios] getRssi failed: ${e.message}`); }
       return { content: [{ type: "text", text: JSON.stringify({
         firmware_version:    sysInfo?.["system.version"] ?? s?.firmware_version ?? null,
         build_number:        sysInfo?.["system.build_number"] ?? null,

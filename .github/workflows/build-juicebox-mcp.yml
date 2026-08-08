@@ -57,10 +57,28 @@ jobs:
           CF_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           # Requires one-time NAS setup — see docs/nas-deploy-key-setup.md
+          #
+          # The `deployed` flag is load-bearing. This loop used to end in
+          #   ... && break || { echo "...retrying..."; sleep 10; }
+          # which leaves the step's exit status as that of the final `echo`/`sleep`
+          # — i.e. 0. On 2026-08-08 all three SSH attempts failed against a dead
+          # Cloudflare tunnel and the step still went green, so the image was built
+          # and pushed to GHCR while the NAS quietly kept running a 3-month-old one.
+          # A deploy that cannot reach the NAS must fail loudly.
+          deployed=false
           for i in 1 2 3; do
-            ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            if ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
               -o "ProxyCommand=cloudflared access ssh --hostname nas-ssh.aldarondo.family --id $CF_CLIENT_ID --secret $CF_CLIENT_SECRET" \
               charles@nas-ssh.aldarondo.family \
-              "cd /volume1/docker/claude-juicebox && git pull && sudo /usr/local/bin/docker compose stop 2>/dev/null; sudo /usr/local/bin/docker compose rm -f 2>/dev/null; sudo /usr/local/bin/docker network ls -q --filter name=claude-juicebox | xargs -r sudo /usr/local/bin/docker network rm 2>/dev/null; sudo /usr/local/bin/docker compose pull && sudo /usr/local/bin/docker compose up -d" \
-              && break || { echo "SSH attempt $i failed, retrying in 10s..."; sleep 10; }
+              "cd /volume1/docker/claude-juicebox && git pull && sudo /usr/local/bin/docker compose stop 2>/dev/null; sudo /usr/local/bin/docker compose rm -f 2>/dev/null; sudo /usr/local/bin/docker network ls -q --filter name=claude-juicebox | xargs -r sudo /usr/local/bin/docker network rm 2>/dev/null; sudo /usr/local/bin/docker compose pull && sudo /usr/local/bin/docker compose up -d"
+            then
+              deployed=true
+              break
+            fi
+            echo "SSH attempt $i failed, retrying in 10s..."
+            sleep 10
           done
+          if [ "$deployed" != true ]; then
+            echo "Deploy to NAS failed after 3 attempts" >&2
+            exit 1
+          fi

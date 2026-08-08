@@ -57,7 +57,7 @@ services:
   juicepassproxy:
     image: ghcr.io/aldarondo/claude-juicebox-juicepassproxy:${JPP_IMAGE_TAG:-latest}   # built by .github/workflows/build-juicepassproxy.yml
     container_name: juicepassproxy
-    # Host network required so it can receive UDP from the JuiceBox at 192.168.0.141
+    # Host network required so it can receive UDP from the JuiceBox at $JUICEBOX_HOST
     # and so it can reach Mosquitto on localhost:1883
     network_mode: host
     volumes:
@@ -103,6 +103,12 @@ services:
       - MQTT_BROKER=mqtt://juicebox-mosquitto:1883
       - MQTT_USER=${MQTT_USER:-}
       - MQTT_PASS=${MQTT_PASS:-}
+      # Charger LAN IP — zentriosClient.js hits http://$JUICEBOX_HOST/command/<cmd>.
+      # Without this the ZentriOS tools (get_diagnostics, get_wifi_info, wifi_scan,
+      # reboot_charger) all time out. MQTT telemetry is unaffected, so the failure
+      # is easy to miss — see ROADMAP 2026-08-08.
+      - JUICEBOX_HOST=${JUICEBOX_HOST}
+      - ZENTRIOS_TIMEOUT=${ZENTRIOS_TIMEOUT:-5000}
     volumes:
       - /volume1/docker/claude-juicebox/logs:/logs
     restart: unless-stopped

@@ -13,9 +13,14 @@
 [Empty]
 
 ### 🔴 Blocked
-[Empty]
+- **Charger IP is not actually pinned by dnsmasq** — the charger currently holds `192.168.0.13`, a lease dnsmasq never granted (its pool is `192.168.0.2`–`JUICEBOX_IP`). In 6000 lines of `juicebox-dns` log there is *zero* DHCP activity for either charger MAC (`4c:55:cc:14:50:e8` hardware / `52:d4:f7:14:50:e8` WiFi), while the Nirvana pump ACKs fine — so the Cox router is winning the charger's DHCP, or the charger's 12h renewal falls outside the log window. Consequence: `JUICEBOX_HOST` will drift again on the next lease change and silently break the ZentriOS tools. Needs a decision (see below) — not fixed here because every option touches LAN-wide DHCP.
+  - Option A: widen `JUICEBOX_IP` to `.13` — one-line change, but widens dnsmasq's pool to `.2`–`.13` and risks handing out addresses that collide with Cox's range.
+  - Option B: set a Cox static DHCP reservation for `4c:55:cc:14:50:e8` at whatever IP it should hold, and leave dnsmasq out of the charger's DHCP entirely.
+  - Option C: put the charger back on a static config (`scripts/set_static_ip.py`); `wlan.dhcp.enabled` is currently `1`, so the static config that script writes is not in effect.
 
 ## ✅ Completed
+
+- **🐛 ZentriOS side channel dead — `JUICEBOX_HOST` never reached the MCP container (2026-08-08)** — `get_diagnostics` returned `ZentriOS request timed out` for firmware/uptime/UUID/memory and `null` WiFi RSSI, while MQTT telemetry and start/stop worked perfectly. Two compounding faults: (1) the `juicebox-mcp` service in `docker-compose.yml` never passed `JUICEBOX_HOST` through — only `PORT`/`MQTT_*` were in its `environment:` block — so `zentriosClient.js` fell back to its hardcoded `192.168.0.2`, which answers nothing (ARP `incomplete`, curl exit 7); (2) the configured value was stale anyway — `.env` said `192.168.0.4`, also dead, while the charger actually sits at `192.168.0.13` (confirmed: ARP `4c:55:cc:14:50:e8` on eth1, ping 0% loss, `GET /command/version` → HTTP 200, `get wlan.network.ip` → `192.168.0.13`). Because the ZentriOS path is entirely separate from MQTT, the whole failure was invisible to normal charging use. Fixes: added `JUICEBOX_HOST` + `ZENTRIOS_TIMEOUT` passthrough to the `juicebox-mcp` service; removed the hardcoded `192.168.0.2` fallback in favour of a fail-fast error naming the missing var; documented `JUICEBOX_HOST` in `mcp-server/.env.example` (it was absent, which is how the omission slipped through); pointed NAS `.env` at `.13` (backup at `.env.bak-20260808`); fixed the stale `192.168.0.141` comment on the JPP service. 51 tests pass. Underlying IP-drift cause logged under 🔴 Blocked.
 
 - **🐛 Deploy fix (2026-04-25)** — `Bind mount failed: '/volume1/docker/claude-juicebox/logs' does not exist` after the `mcp-logs` named volume → bind-mount conversion. Added `ensure_dirs` step to `deploy-compose.yml` that runs `mkdir -p /volume1/docker/claude-juicebox/logs` on the NAS before `docker compose up -d`. Mirrors the pattern other coordinators use; future bind mounts can be added to the same function.
 

@@ -46,7 +46,12 @@
 
 import { get as httpGet } from "http";
 
-const HOST    = process.env.JUICEBOX_HOST    || "192.168.0.2";
+// No default host. A hardcoded fallback here previously masked a real
+// misconfiguration: docker-compose never passed JUICEBOX_HOST through to the
+// juicebox-mcp service, so every ZentriOS call silently went to 192.168.0.2
+// and died on a 5s timeout that looked like flaky charger WiFi. Failing fast
+// with a clear message beats guessing an address.
+const HOST    = process.env.JUICEBOX_HOST || null;
 const TIMEOUT = parseInt(process.env.ZENTRIOS_TIMEOUT || "5000", 10);
 
 /**
@@ -54,6 +59,13 @@ const TIMEOUT = parseInt(process.env.ZENTRIOS_TIMEOUT || "5000", 10);
  * Returns the parsed response string on success, throws on error.
  */
 export async function runCommand(cmd) {
+  if (!HOST) {
+    throw new Error(
+      "JUICEBOX_HOST is not set — cannot reach the charger's ZentriOS API. " +
+      "Set it to the charger's LAN IP in .env and ensure docker-compose passes " +
+      "it through to the juicebox-mcp service."
+    );
+  }
   const url = `http://${HOST}/command/${encodeURIComponent(cmd)}`;
   return new Promise((resolve, reject) => {
     const req = httpGet(url, { timeout: TIMEOUT }, (res) => {

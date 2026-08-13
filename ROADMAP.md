@@ -107,6 +107,6 @@
 - mcp-server/README.md with full tool reference and Docker deploy guide (2026-04-14)
 
 ## 🚫 Blocked
-- ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #31292648327) — https://github.com/aldarondo/claude-juicebox/actions/runs/31292648327 — 2026-08-12 08:00 UTC
+- ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #31292648327) — https://github.com/aldarondo/claude-juicebox/actions/runs/31292648327 — 2026-08-13 08:00 UTC
 
 [Empty]

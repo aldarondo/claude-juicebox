@@ -107,6 +107,7 @@
 - mcp-server/README.md with full tool reference and Docker deploy guide (2026-04-14)
 
 ## 🚫 Blocked
+- ❌ [docker-monitor:container-stopped] Container `juicepassproxy` is not running on the NAS — check `docker logs juicepassproxy` and restart — 2026-09-18 08:00 UTC
 
 - ❌ [docker-monitor:deploy-failed] GitHub Actions deploy failed (run #34746488753) — https://github.com/aldarondo/claude-juicebox/actions/runs/34746488753 — 2026-09-18 08:00 UTC
 
